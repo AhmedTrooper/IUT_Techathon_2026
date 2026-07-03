@@ -13,6 +13,8 @@ pub struct AppState {
     pub s3_client: aws_sdk_s3::Client,
     pub s3_bucket: String,
     pub redis_client: redis::Client,
+    pub memory_devices: std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, features::devices::Device>>>,
+    pub memory_history: std::sync::Arc<tokio::sync::RwLock<Vec<features::devices::DeviceHistory>>>,
 }
 
 #[tokio::main]
@@ -82,11 +84,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let mut initial_devices = get_default_devices();
+    let mut initial_history = Vec::new();
+    
+    if let Ok(db_devices) = sqlx::query_as::<_, features::devices::Device>("SELECT * FROM devices")
+        .fetch_all(&pool)
+        .await
+    {
+        for d in db_devices {
+            initial_devices.insert(d.id.clone(), d);
+        }
+        info!("Successfully synced in-memory cache with database state.");
+        
+        if let Ok(db_history) = sqlx::query_as::<_, features::devices::DeviceHistory>("SELECT * FROM device_history ORDER BY timestamp ASC")
+            .fetch_all(&pool)
+            .await
+        {
+            initial_history = db_history;
+        }
+    } else {
+        error!("Database connection failed during startup. Operating in fail-safe mode.");
+    }
+
+    let memory_devices = std::sync::Arc::new(tokio::sync::RwLock::new(initial_devices));
+    let memory_history = std::sync::Arc::new(tokio::sync::RwLock::new(initial_history));
+
     let state = AppState {
         pool: pool.clone(),
         s3_client,
         s3_bucket,
         redis_client,
+        memory_devices,
+        memory_history,
     };
 
     features::simulator::start_simulator(pool.clone());
@@ -152,4 +181,43 @@ async fn rate_limit_middleware(
     }
 
     Ok(next.run(req).await)
+}
+
+fn get_default_devices() -> std::collections::HashMap<String, features::devices::Device> {
+    let mut map = std::collections::HashMap::new();
+    let rooms = vec![
+        ("drawing_room", "Drawing Room"),
+        ("work_room_1", "Work Room 1"),
+        ("work_room_2", "Work Room 2"),
+    ];
+
+    for (room_id, _room_name) in rooms {
+        for fan_num in 1..=2 {
+            let id = format!("{}_fan_{}", room_id, fan_num);
+            let name = format!("Fan {}", fan_num);
+            map.insert(id.clone(), features::devices::Device {
+                id: id.clone(),
+                name,
+                room: room_id.to_string(),
+                device_type: "fan".to_string(),
+                status: false,
+                power_consumption: 60,
+                last_changed: chrono::Utc::now(),
+            });
+        }
+        for light_num in 1..=3 {
+            let id = format!("{}_light_{}", room_id, light_num);
+            let name = format!("Light {}", light_num);
+            map.insert(id.clone(), features::devices::Device {
+                id: id.clone(),
+                name,
+                room: room_id.to_string(),
+                device_type: "light".to_string(),
+                status: false,
+                power_consumption: 15,
+                last_changed: chrono::Utc::now(),
+            });
+        }
+    }
+    map
 }

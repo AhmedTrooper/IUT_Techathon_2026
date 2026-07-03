@@ -185,15 +185,25 @@ async fn get_devices(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Device>>, StatusCode> {
     let pool = &state.pool;
-    let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices ORDER BY room, name")
+    match sqlx::query_as::<_, Device>("SELECT * FROM devices ORDER BY room, name")
         .fetch_all(pool)
         .await
-        .map_err(|e| {
-            error!("Error fetching devices: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    Ok(Json(devices))
+    {
+        Ok(devices) => {
+            let mut cache = state.memory_devices.write().await;
+            for d in &devices {
+                cache.insert(d.id.clone(), d.clone());
+            }
+            Ok(Json(devices))
+        }
+        Err(e) => {
+            error!("Database offline, fetching devices from memory cache: {}", e);
+            let cache = state.memory_devices.read().await;
+            let mut list: Vec<Device> = cache.values().cloned().collect();
+            list.sort_by(|a, b| (&a.room, &a.name).cmp(&(&b.room, &b.name)));
+            Ok(Json(list))
+        }
+    }
 }
 
 async fn toggle_device(
@@ -205,63 +215,93 @@ async fn toggle_device(
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
 
-    let mut tx = state.pool.begin().await.map_err(|e| {
-        error!("Failed to begin transaction: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let db_result = async {
+        let mut tx = state.pool.begin().await.map_err(|e| {
+            error!("Fail-safe: transaction begin failed: {}", e);
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
 
-    let device: Option<Device> = sqlx::query_as(
-        "SELECT * FROM devices WHERE id = $1 FOR UPDATE"
-    )
-    .bind(device_id.as_str())
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|e| {
-        error!("Error fetching device for update: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+        let device: Option<Device> = sqlx::query_as(
+            "SELECT * FROM devices WHERE id = $1 FOR UPDATE"
+        )
+        .bind(device_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let device = match device {
-        Some(d) => d,
-        None => return Err(StatusCode::NOT_FOUND),
-    };
+        let device = match device {
+            Some(d) => d,
+            None => return Err(StatusCode::NOT_FOUND),
+        };
 
-    if Utc::now().signed_duration_since(device.last_changed).num_milliseconds() < 500 {
-        return Err(StatusCode::TOO_MANY_REQUESTS);
+        if Utc::now().signed_duration_since(device.last_changed).num_milliseconds() < 500 {
+            return Err(StatusCode::TOO_MANY_REQUESTS);
+        }
+
+        let updated_device: Device = sqlx::query_as(
+            r#"
+            UPDATE devices 
+            SET status = NOT status, last_changed = NOW()
+            WHERE id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(device_id.as_str())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO device_history (device_id, status, timestamp)
+            VALUES ($1, $2, NOW())
+            "#,
+        )
+        .bind(&updated_device.id)
+        .bind(updated_device.status)
+        .execute(&mut *tx)
+        .await;
+
+        tx.commit().await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        Ok(updated_device)
+    }.await;
+
+    match db_result {
+        Ok(updated_device) => {
+            let mut cache = state.memory_devices.write().await;
+            cache.insert(updated_device.id.clone(), updated_device.clone());
+            info!("Device '{}' toggled via Database.", updated_device.id);
+            Ok(Json(updated_device))
+        }
+        Err(err) => {
+            if err == StatusCode::NOT_FOUND || err == StatusCode::TOO_MANY_REQUESTS {
+                return Err(err);
+            }
+            
+            error!("Database toggle failed: {:?}. Using in-memory fallback.", err);
+
+            let mut cache = state.memory_devices.write().await;
+            let device = cache.get_mut(device_id.as_str()).ok_or(StatusCode::NOT_FOUND)?;
+
+            if Utc::now().signed_duration_since(device.last_changed).num_milliseconds() < 500 {
+                return Err(StatusCode::TOO_MANY_REQUESTS);
+            }
+
+            device.status = !device.status;
+            device.last_changed = Utc::now();
+            let updated = device.clone();
+
+            let mut history = state.memory_history.write().await;
+            let next_id = history.len() as i32 + 1;
+            history.push(DeviceHistory {
+                id: next_id,
+                device_id: updated.id.clone(),
+                status: updated.status,
+                timestamp: updated.last_changed,
+            });
+
+            info!("Device '{}' toggled via In-Memory.", updated.id);
+            Ok(Json(updated))
+        }
     }
-
-    let updated_device: Device = sqlx::query_as(
-        r#"
-        UPDATE devices 
-        SET status = NOT status, last_changed = NOW()
-        WHERE id = $1
-        RETURNING *
-        "#,
-    )
-    .bind(device_id.as_str())
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(|e| {
-        error!("Error toggling device: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    let _ = sqlx::query(
-        r#"
-        INSERT INTO device_history (device_id, status, timestamp)
-        VALUES ($1, $2, NOW())
-        "#,
-    )
-    .bind(&updated_device.id)
-    .bind(updated_device.status)
-    .execute(&mut *tx)
-    .await;
-
-    tx.commit().await.map_err(|e| {
-        error!("Failed to commit transaction: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    info!("Device '{}' toggled to {}", updated_device.id, if updated_device.status { "ON" } else { "OFF" });
-    Ok(Json(updated_device))
 }

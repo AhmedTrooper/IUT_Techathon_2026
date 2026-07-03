@@ -36,13 +36,24 @@ async fn get_usage(
     State(state): State<AppState>,
 ) -> Result<Json<UsageResponse>, StatusCode> {
     let pool = &state.pool;
-    let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
+    let devices_result = sqlx::query_as::<_, Device>("SELECT * FROM devices")
         .fetch_all(pool)
-        .await
-        .map_err(|e| {
-            error!("Error fetching devices: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .await;
+
+    let devices = match devices_result {
+        Ok(devs) => {
+            let mut cache = state.memory_devices.write().await;
+            for d in &devs {
+                cache.insert(d.id.clone(), d.clone());
+            }
+            devs
+        }
+        Err(e) => {
+            error!("Database offline, using in-memory devices for usage calculation: {}", e);
+            let cache = state.memory_devices.read().await;
+            cache.values().cloned().collect()
+        }
+    };
 
     let mut total_current_watts = 0;
     let mut room_watts_map: HashMap<String, i32> = HashMap::new();
@@ -70,10 +81,14 @@ async fn get_usage(
     let today_kwh = match cached_kwh {
         Some(kwh) => kwh,
         None => {
-            let kwh = calculate_today_kwh(pool, &devices).await.map_err(|e| {
-                error!("Error calculating today's kWh: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            let kwh = match calculate_today_kwh(pool, &devices).await {
+                Ok(val) => val,
+                Err(e) => {
+                    error!("Database error calculating today's kWh: {}. Falling back to in-memory history.", e);
+                    let history = state.memory_history.read().await;
+                    calculate_today_kwh_in_memory(&devices, &history).await
+                }
+            };
             if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
                 let _: Result<(), _> = con.set_ex("today_kwh", kwh.to_string(), 3).await;
             }
@@ -150,4 +165,57 @@ pub async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f6
     }
 
     Ok(total_watt_seconds / 3_600_000.0)
+}
+
+pub async fn calculate_today_kwh_in_memory(
+    devices: &[Device],
+    history_list: &[DeviceHistory],
+) -> f64 {
+    let now = Utc::now();
+    let dhaka_offset = FixedOffset::east_opt(6 * 3600).unwrap();
+    let now_dhaka = now.with_timezone(&dhaka_offset);
+
+    let today_start_dhaka = dhaka_offset.with_ymd_and_hms(
+        now_dhaka.year(),
+        now_dhaka.month(),
+        now_dhaka.day(),
+        0, 0, 0
+    )
+    .single()
+    .unwrap_or(now_dhaka);
+
+    let today_start_utc = today_start_dhaka.with_timezone(&Utc);
+    let mut total_watt_seconds = 0.0;
+
+    for device in devices {
+        let mut history: Vec<&DeviceHistory> = history_list.iter()
+            .filter(|h| h.device_id == device.id && h.timestamp >= today_start_utc)
+            .collect();
+        history.sort_by_key(|h| h.timestamp);
+
+        let last_before = history_list.iter()
+            .filter(|h| h.device_id == device.id && h.timestamp < today_start_utc)
+            .max_by_key(|h| h.timestamp)
+            .map(|h| h.status)
+            .unwrap_or(false);
+
+        let mut current_state = last_before;
+        let mut current_time = today_start_utc;
+
+        for event in history {
+            if current_state {
+                let duration_secs = (event.timestamp - current_time).num_seconds() as f64;
+                total_watt_seconds += duration_secs * (device.power_consumption as f64);
+            }
+            current_state = event.status;
+            current_time = event.timestamp;
+        }
+
+        if current_state {
+            let duration_secs = (now - current_time).num_seconds() as f64;
+            total_watt_seconds += duration_secs * (device.power_consumption as f64);
+        }
+    }
+
+    total_watt_seconds / 3_600_000.0
 }

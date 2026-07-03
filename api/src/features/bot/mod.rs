@@ -3,7 +3,7 @@ use serenity::{
     model::{channel::Message, gateway::Ready, id::ChannelId},
     prelude::*,
 };
-use sqlx::PgPool;
+
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
@@ -53,7 +53,7 @@ impl EventHandler for Handler {
         }
 
         if content.starts_with("!status") {
-            let raw_data = match get_raw_status(&self.state.pool).await {
+            let raw_data = match get_raw_status(&self.state).await {
                 Ok(data) => data,
                 Err(e) => {
                     error!("Error getting status: {}", e);
@@ -68,7 +68,7 @@ impl EventHandler for Handler {
             let parts: Vec<&str> = content.split_whitespace().collect();
             let room_query = if parts.len() > 1 { parts[1] } else { "" };
             
-            let raw_data = match get_raw_room_status(&self.state.pool, room_query).await {
+            let raw_data = match get_raw_room_status(&self.state, room_query).await {
                 Ok(data) => data,
                 Err(e) => {
                     error!("Error getting room status: {}", e);
@@ -141,10 +141,20 @@ fn format_room_device_counts(fans: i32, lights: i32) -> String {
     parts.join(", ")
 }
 
-async fn get_raw_status(pool: &PgPool) -> Result<String, sqlx::Error> {
-    let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
+async fn get_raw_status(state: &AppState) -> Result<String, sqlx::Error> {
+    let pool = &state.pool;
+    let devices_result = sqlx::query_as::<_, Device>("SELECT * FROM devices")
         .fetch_all(pool)
-        .await?;
+        .await;
+
+    let devices = match devices_result {
+        Ok(devs) => devs,
+        Err(e) => {
+            error!("Database offline, bot using in-memory cache for status: {}", e);
+            let cache = state.memory_devices.read().await;
+            cache.values().cloned().collect()
+        }
+    };
 
     let mut drawing_fans = 0;
     let mut drawing_lights = 0;
@@ -180,7 +190,7 @@ async fn get_raw_status(pool: &PgPool) -> Result<String, sqlx::Error> {
     ))
 }
 
-async fn get_raw_room_status(pool: &PgPool, query: &str) -> Result<String, sqlx::Error> {
+async fn get_raw_room_status(state: &AppState, query: &str) -> Result<String, sqlx::Error> {
     let room_id = match query.to_lowercase().replace(" ", "").replace("_", "").as_str() {
         "drawing" | "drawingroom" => "drawing_room",
         "work1" | "workroom1" | "wr1" => "work_room_1",
@@ -190,10 +200,23 @@ async fn get_raw_room_status(pool: &PgPool, query: &str) -> Result<String, sqlx:
         }
     };
 
-    let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices WHERE room = $1")
+    let pool = &state.pool;
+    let devices_result = sqlx::query_as::<_, Device>("SELECT * FROM devices WHERE room = $1")
         .bind(room_id)
         .fetch_all(pool)
-        .await?;
+        .await;
+
+    let devices = match devices_result {
+        Ok(devs) => devs,
+        Err(e) => {
+            error!("Database offline, bot using in-memory cache for room status: {}", e);
+            let cache = state.memory_devices.read().await;
+            cache.values()
+                .filter(|d| d.room == room_id)
+                .cloned()
+                .collect()
+        }
+    };
 
     let room_name = match room_id {
         "drawing_room" => "Drawing Room",
@@ -212,9 +235,18 @@ async fn get_raw_room_status(pool: &PgPool, query: &str) -> Result<String, sqlx:
 
 async fn get_raw_usage(state: &AppState) -> Result<String, sqlx::Error> {
     let pool = &state.pool;
-    let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
+    let devices_result = sqlx::query_as::<_, Device>("SELECT * FROM devices")
         .fetch_all(pool)
-        .await?;
+        .await;
+
+    let devices = match devices_result {
+        Ok(devs) => devs,
+        Err(e) => {
+            error!("Database offline, bot using in-memory cache for usage: {}", e);
+            let cache = state.memory_devices.read().await;
+            cache.values().cloned().collect()
+        }
+    };
 
     let mut total_current_watts = 0;
     for d in &devices {
@@ -235,7 +267,14 @@ async fn get_raw_usage(state: &AppState) -> Result<String, sqlx::Error> {
     let today_kwh = match cached_kwh {
         Some(kwh) => kwh,
         None => {
-            let kwh = calculate_today_kwh(pool, &devices).await?;
+            let kwh = match calculate_today_kwh(pool, &devices).await {
+                Ok(val) => val,
+                Err(e) => {
+                    error!("Database error calculating today's kWh: {}. Falling back to in-memory history.", e);
+                    let history = state.memory_history.read().await;
+                    crate::features::usage::calculate_today_kwh_in_memory(&devices, &history).await
+                }
+            };
             if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
                 let _: Result<(), _> = con.set_ex("today_kwh", kwh.to_string(), 3).await;
             }
