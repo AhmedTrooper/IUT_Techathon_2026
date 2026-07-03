@@ -69,7 +69,7 @@ async fn get_usage(
     }))
 }
 
-async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f64, sqlx::Error> {
+pub async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f64, sqlx::Error> {
     let now = Utc::now();
     // Start of today: 00:00:00 UTC
     let today_start = Utc.with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)

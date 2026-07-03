@@ -44,6 +44,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start background device simulator
     features::simulator::start_simulator(pool.clone());
 
+    // Start Discord Bot gateway client if token is set
+    if let Ok(token) = env::var("DISCORD_TOKEN") {
+        features::bot::start_bot(token, pool.clone());
+    } else {
+        info!("DISCORD_TOKEN environment variable not set, skipping Discord Bot startup.");
+    }
+
     // Build Axum router with state and permissive CORS layer
     let app = axum::Router::new()
         .route("/", axum::routing::get(|| async { "API is healthy" }))
