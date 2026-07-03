@@ -4012,6 +4012,7 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
+ "rand 0.8.6",
  "redis 1.2.4",
  "redis-work-queue",
  "rig",
