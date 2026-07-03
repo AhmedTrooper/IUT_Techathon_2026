@@ -137,10 +137,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(features::diagram::router())
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), rate_limit_middleware));
 
+    let cors = match env::var("ALLOWED_ORIGINS") {
+        Ok(val) if !val.trim().is_empty() && val.trim() != "*" => {
+            let origins = val
+                .split(',')
+                .filter_map(|s| s.trim().parse::<axum::http::HeaderValue>().ok())
+                .collect::<Vec<_>>();
+            tower_http::cors::CorsLayer::new()
+                .allow_origin(origins)
+                .allow_methods(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any)
+        }
+        _ => tower_http::cors::CorsLayer::permissive(),
+    };
+
     let app = axum::Router::new()
         .route("/health", axum::routing::get(health_check))
         .nest("/api", api_routes)
-        .layer(tower_http::cors::CorsLayer::permissive())
+        .layer(cors)
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
 
