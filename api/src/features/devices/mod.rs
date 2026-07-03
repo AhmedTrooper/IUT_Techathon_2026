@@ -34,7 +34,6 @@ pub fn router() -> Router<PgPool> {
         .route("/devices/:id/toggle", post(toggle_device))
 }
 
-// GET /api/devices
 async fn get_devices(
     State(pool): State<PgPool>,
 ) -> Result<Json<Vec<Device>>, StatusCode> {
@@ -42,19 +41,34 @@ async fn get_devices(
         .fetch_all(&pool)
         .await
         .map_err(|e| {
-            error!("Database error fetching devices: {}", e);
+            error!("Error fetching devices: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
     Ok(Json(devices))
 }
 
-// POST /api/devices/:id/toggle
 async fn toggle_device(
     Path(id): Path<String>,
     State(pool): State<PgPool>,
 ) -> Result<Json<Device>, StatusCode> {
-    // 1. Toggle status
+    let current: Option<(DateTime<Utc>,)> = sqlx::query_as(
+        "SELECT last_changed FROM devices WHERE id = $1"
+    )
+    .bind(&id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        error!("Error fetching last changed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if let Some((last,)) = current {
+        if Utc::now().signed_duration_since(last).num_milliseconds() < 500 {
+            return Err(StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
+
     let row: Option<Device> = sqlx::query_as(
         r#"
         UPDATE devices 
@@ -67,14 +81,13 @@ async fn toggle_device(
     .fetch_optional(&pool)
     .await
     .map_err(|e| {
-        error!("Database error toggling device {}: {}", id, e);
+        error!("Error updating device status {}: {}", id, e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
     match row {
         Some(device) => {
-            // 2. Log state change
-            if let Err(e) = sqlx::query(
+            let _ = sqlx::query(
                 r#"
                 INSERT INTO device_history (device_id, status, timestamp)
                 VALUES ($1, $2, NOW())
@@ -83,12 +96,9 @@ async fn toggle_device(
             .bind(&device.id)
             .bind(device.status)
             .execute(&pool)
-            .await
-            {
-                error!("Database error inserting history for {}: {}", device.id, e);
-            }
+            .await;
 
-            info!("Device '{}' manually toggled to {}", device.id, if device.status { "ON" } else { "OFF" });
+            info!("Device '{}' toggled to {}", device.id, if device.status { "ON" } else { "OFF" });
             Ok(Json(device))
         }
         None => Err(StatusCode::NOT_FOUND),

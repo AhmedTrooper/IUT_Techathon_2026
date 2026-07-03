@@ -28,7 +28,6 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        // Ignore bot messages
         if msg.author.bot {
             return;
         }
@@ -80,7 +79,6 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("Discord Bot {} is connected!", ready.user.name);
 
-        // Start background alert loop
         if let Some(channel_id) = self.alert_channel_id {
             let pool = self.pool.clone();
             let http = ctx.http.clone();
@@ -99,7 +97,6 @@ impl EventHandler for Handler {
     }
 }
 
-// ---------------- Helper Functions for Database Queries ----------------
 
 async fn get_raw_status(pool: &PgPool) -> Result<String, sqlx::Error> {
     let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
@@ -155,7 +152,6 @@ async fn get_raw_status(pool: &PgPool) -> Result<String, sqlx::Error> {
 }
 
 async fn get_raw_room_status(pool: &PgPool, query: &str) -> Result<String, sqlx::Error> {
-    // Normalise room query
     let room_id = match query.to_lowercase().replace(" ", "").replace("_", "").as_str() {
         "drawing" | "drawingroom" => "drawing_room",
         "work1" | "workroom1" | "wr1" => "work_room_1",
@@ -205,8 +201,6 @@ async fn get_raw_usage(pool: &PgPool) -> Result<String, sqlx::Error> {
     ))
 }
 
-// ---------------- Proactive Alert Logic ----------------
-
 async fn check_and_send_alerts(
     pool: &PgPool,
     channel_id: ChannelId,
@@ -214,15 +208,16 @@ async fn check_and_send_alerts(
     sent_alerts: &Arc<Mutex<HashSet<String>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
+    let dhaka_offset = chrono::FixedOffset::east_opt(6 * 3600).unwrap();
+    let now_dhaka = now.with_timezone(&dhaka_offset);
+
     let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
         .fetch_all(pool)
         .await?;
 
     let mut active_alert_keys = HashSet::new();
 
-    // 1. Alert: Devices left ON after office hours (9 AM - 5 PM UTC)
-    // We assume office hours are 9 to 17 UTC for simplicity or user local. Let's use UTC 9 to 17.
-    let hour = now.hour();
+    let hour = now_dhaka.hour();
     let is_after_hours = hour < 9 || hour >= 17;
 
     if is_after_hours {
@@ -240,8 +235,8 @@ async fn check_and_send_alerts(
             if !guard.contains(&alert_key) {
                 let list = active_devices.join(", ");
                 let alert_msg = format!(
-                    "⚠️ **After-Hours Power Alert!**\nThe following devices are still active at {:02}:{:02} UTC:\n{}\nDid someone forget to turn them off?",
-                    hour, now.minute(), list
+                    "⚠️ **After-Hours Power Alert!**\nThe following devices are still active at {:02}:{:02} Dhaka time:\n{}\nDid someone forget to turn them off?",
+                    hour, now_dhaka.minute(), list
                 );
                 
                 let humanized = humanize_response(&alert_msg).await;
@@ -251,14 +246,12 @@ async fn check_and_send_alerts(
         }
     }
 
-    // 2. Alert: Room has all devices ON for more than 2 hours continuously
     let rooms = vec!["drawing_room", "work_room_1", "work_room_2"];
     for room in rooms {
         let room_devices: Vec<&Device> = devices.iter().filter(|d| d.room == room).collect();
         let all_on = !room_devices.is_empty() && room_devices.iter().all(|d| d.status);
 
         if all_on {
-            // Find the minimum last_changed timestamp among the room's devices
             if let Some(min_last_changed) = room_devices.iter().map(|d| d.last_changed).min() {
                 let duration = now.signed_duration_since(min_last_changed);
                 if duration.num_hours() >= 2 {
@@ -267,9 +260,10 @@ async fn check_and_send_alerts(
 
                     let mut guard = sent_alerts.lock().await;
                     if !guard.contains(&alert_key) {
+                        let min_dhaka = min_last_changed.with_timezone(&dhaka_offset);
                         let alert_msg = format!(
                             "⚠️ **Efficiency Alert!**\nAll devices in {} have been running continuously for over 2 hours (since {}).",
-                            room.replace("_", " "), min_last_changed.format("%H:%M UTC")
+                            room.replace("_", " "), min_dhaka.format("%H:%M Dhaka time")
                         );
                         
                         let humanized = humanize_response(&alert_msg).await;
@@ -281,14 +275,11 @@ async fn check_and_send_alerts(
         }
     }
 
-    // Clean up cleared alerts from sent tracker
     let mut guard = sent_alerts.lock().await;
     guard.retain(|key| active_alert_keys.contains(key));
 
     Ok(())
 }
-
-// ---------------- Rig LLM Integration ----------------
 
 async fn humanize_response(raw_data: &str) -> String {
     if env::var("GEMINI_API_KEY").is_ok() {
@@ -313,11 +304,8 @@ async fn humanize_response(raw_data: &str) -> String {
         }
     }
     
-    // Return friendly default if no LLM key is configured
     format!("Here is the status summary:\n\n{}", raw_data)
 }
-
-// ---------------- Bot Startup Entrypoint ----------------
 
 pub fn start_bot(token: String, pool: PgPool) {
     tokio::spawn(async move {

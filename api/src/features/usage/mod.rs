@@ -4,7 +4,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use chrono::{Utc, TimeZone, Datelike};
+use chrono::{Utc, TimeZone, Datelike, FixedOffset};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -29,16 +29,14 @@ pub fn router() -> Router<PgPool> {
     Router::new().route("/usage", get(get_usage))
 }
 
-// GET /api/usage
 async fn get_usage(
     State(pool): State<PgPool>,
 ) -> Result<Json<UsageResponse>, StatusCode> {
-    // 1. Fetch all devices to compute current usage
     let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
         .fetch_all(&pool)
         .await
         .map_err(|e| {
-            error!("Database error fetching devices for usage: {}", e);
+            error!("Error fetching devices: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -56,7 +54,6 @@ async fn get_usage(
         .map(|(room, current_watts)| RoomBreakdown { room, current_watts })
         .collect::<Vec<_>>();
 
-    // 2. Compute today's estimated usage in kWh
     let today_kwh = calculate_today_kwh(&pool, &devices).await.map_err(|e| {
         error!("Error calculating today's kWh: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -71,15 +68,22 @@ async fn get_usage(
 
 pub async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f64, sqlx::Error> {
     let now = Utc::now();
-    // Start of today: 00:00:00 UTC
-    let today_start = Utc.with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
-        .single()
-        .unwrap_or(now);
+    let dhaka_offset = FixedOffset::east_opt(6 * 3600).unwrap();
+    let now_dhaka = now.with_timezone(&dhaka_offset);
 
+    let today_start_dhaka = dhaka_offset.with_ymd_and_hms(
+        now_dhaka.year(),
+        now_dhaka.month(),
+        now_dhaka.day(),
+        0, 0, 0
+    )
+    .single()
+    .unwrap_or(now_dhaka);
+
+    let today_start_utc = today_start_dhaka.with_timezone(&Utc);
     let mut total_watt_seconds = 0.0;
 
     for device in devices {
-        // Fetch all transitions for this device today
         let history = sqlx::query_as::<_, DeviceHistory>(
             r#"
             SELECT * FROM device_history 
@@ -88,11 +92,10 @@ pub async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f6
             "#,
         )
         .bind(&device.id)
-        .bind(today_start)
+        .bind(today_start_utc)
         .fetch_all(pool)
         .await?;
 
-        // Determine initial state at 00:00:00 today.
         let last_before: Option<(bool,)> = sqlx::query_as(
             r#"
             SELECT status FROM device_history 
@@ -102,12 +105,12 @@ pub async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f6
             "#,
         )
         .bind(&device.id)
-        .bind(today_start)
+        .bind(today_start_utc)
         .fetch_optional(pool)
         .await?;
 
         let mut current_state = last_before.map(|(status,)| status).unwrap_or(false);
-        let mut current_time = today_start;
+        let mut current_time = today_start_utc;
 
         for event in history {
             if current_state {
@@ -124,6 +127,5 @@ pub async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f6
         }
     }
 
-    let total_kwh = total_watt_seconds / 3_600_000.0;
-    Ok(total_kwh)
+    Ok(total_watt_seconds / 3_600_000.0)
 }

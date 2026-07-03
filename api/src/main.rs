@@ -9,10 +9,8 @@ mod features;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load .env file
     dotenv().ok();
 
-    // Setup logging/tracing
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -23,7 +21,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting IUT Techathon 2026 backend API...");
 
-    // Connect to PostgreSQL database
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL environment variable must be set");
 
@@ -41,17 +38,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Database initialized successfully.");
 
-    // Start background device simulator
     features::simulator::start_simulator(pool.clone());
 
-    // Start Discord Bot gateway client if token is set
     if let Ok(token) = env::var("DISCORD_TOKEN") {
         features::bot::start_bot(token, pool.clone());
     } else {
         info!("DISCORD_TOKEN environment variable not set, skipping Discord Bot startup.");
     }
 
-    // Build Axum router with state and permissive CORS layer
     let app = axum::Router::new()
         .route("/", axum::routing::get(|| async { "API is healthy" }))
         .nest("/api", features::devices::router())

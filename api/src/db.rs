@@ -2,7 +2,6 @@ use sqlx::PgPool;
 use tracing::info;
 
 pub async fn init_db(pool: &PgPool) -> Result<(), sqlx::Error> {
-    // 1. Create tables
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS devices (
@@ -32,7 +31,6 @@ pub async fn init_db(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    // 2. Check if seeding is needed
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM devices")
         .fetch_one(pool)
         .await?;
@@ -47,7 +45,6 @@ pub async fn init_db(pool: &PgPool) -> Result<(), sqlx::Error> {
         ];
 
         for (room_id, _room_name) in rooms {
-            // Seed 2 fans (60W)
             for fan_num in 1..=2 {
                 let id = format!("{}_fan_{}", room_id, fan_num);
                 let name = format!("Fan {}", fan_num);
@@ -64,7 +61,6 @@ pub async fn init_db(pool: &PgPool) -> Result<(), sqlx::Error> {
                 .await?;
             }
 
-            // Seed 3 lights (15W)
             for light_num in 1..=3 {
                 let id = format!("{}_light_{}", room_id, light_num);
                 let name = format!("Light {}", light_num);
