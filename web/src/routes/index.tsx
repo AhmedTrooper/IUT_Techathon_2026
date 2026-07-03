@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AlertsPanel } from "../features/dashboard/components/AlertsPanel";
 import { DevicePanel } from "../features/dashboard/components/DevicePanel";
 import { PowerMeter } from "../features/dashboard/components/PowerMeter";
+import { OfficeLayout } from "../features/dashboard/components/OfficeLayout";
 import { useDashboardData } from "../features/dashboard/hooks/useDashboardData";
 
 export const Route = createFileRoute("/")({
@@ -36,9 +37,9 @@ function Home() {
 					<h1 className="text-3xl font-black text-[var(--sea-ink)] tracking-tight sm:text-4xl md:text-5xl">
 						Office Electricity Monitor
 					</h1>
-					<p className="text-sm text-[var(--sea-ink-soft)] mt-1.5">
+					<p className="text-sm text-[var(--sea-ink-soft)] mt-1.5 max-w-2xl">
 						Real-time status, consumption levels, and anomalies breakdown across
-						the building.
+						the building. Devices can be manually toggled via the map or the list.
 					</p>
 				</div>
 
@@ -50,11 +51,14 @@ function Home() {
 				)}
 			</div>
 
+			{/* Top View Interactive Floor Plan */}
+			<OfficeLayout devices={devices} onToggle={toggleDevice} />
+
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
 				{/* Left Column: Device Status Panels */}
 				<div className="lg:col-span-2 space-y-6">
 					<h2 className="text-lg font-bold text-[var(--sea-ink-soft)] uppercase tracking-wider">
-						Rooms & Devices
+						Rooms & Devices Breakdown
 					</h2>
 					<DevicePanel devices={devices} onToggle={toggleDevice} />
 				</div>
