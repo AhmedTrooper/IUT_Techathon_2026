@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "author": "Techathon Team",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-slide-switch", "id": "sw_light1", "top": 100, "left": -150, "attrs": {} },
+    { "type": "wokwi-slide-switch", "id": "sw_light2", "top": 150, "left": -150, "attrs": {} },
+    { "type": "wokwi-slide-switch", "id": "sw_light3", "top": 200, "left": -150, "attrs": {} },
+    { "type": "wokwi-slide-switch", "id": "sw_fan1", "top": 250, "left": -150, "attrs": {} },
+    { "type": "wokwi-slide-switch", "id": "sw_fan2", "top": 300, "left": -150, "attrs": {} },
+    
+    { "type": "wokwi-led", "id": "led_light1", "top": 100, "left": -50, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-led", "id": "led_light2", "top": 150, "left": -50, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-led", "id": "led_light3", "top": 200, "left": -50, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-dc-motor", "id": "motor_fan1", "top": 250, "left": -50, "attrs": {} },
+    { "type": "wokwi-dc-motor", "id": "motor_fan2", "top": 350, "left": -50, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:GND.1", "sw_light1:1", "black", [ "v0" ] ],
+    [ "esp:3V3", "sw_light1:3", "red", [ "v0" ] ],
+    [ "sw_light1:2", "esp:D15", "green", [ "v0" ] ],
+    [ "sw_light1:2", "led_light1:A", "green", [ "v0" ] ],
+    [ "esp:GND.1", "led_light1:C", "black", [ "v0" ] ],
+
+    [ "esp:GND.1", "sw_light2:1", "black", [ "v0" ] ],
+    [ "esp:3V3", "sw_light2:3", "red", [ "v0" ] ],
+    [ "sw_light2:2", "esp:D2", "green", [ "v0" ] ],
+    [ "sw_light2:2", "led_light2:A", "green", [ "v0" ] ],
+    [ "esp:GND.1", "led_light2:C", "black", [ "v0" ] ],
+
+    [ "esp:GND.1", "sw_light3:1", "black", [ "v0" ] ],
+    [ "esp:3V3", "sw_light3:3", "red", [ "v0" ] ],
+    [ "sw_light3:2", "esp:D4", "green", [ "v0" ] ],
+    [ "sw_light3:2", "led_light3:A", "green", [ "v0" ] ],
+    [ "esp:GND.1", "led_light3:C", "black", [ "v0" ] ],
+
+    [ "esp:GND.1", "sw_fan1:1", "black", [ "v0" ] ],
+    [ "esp:3V3", "sw_fan1:3", "red", [ "v0" ] ],
+    [ "sw_fan1:2", "esp:D16", "blue", [ "v0" ] ],
+    [ "sw_fan1:2", "motor_fan1:VCC", "blue", [ "v0" ] ],
+    [ "esp:GND.1", "motor_fan1:GND", "black", [ "v0" ] ],
+
+    [ "esp:GND.1", "sw_fan2:1", "black", [ "v0" ] ],
+    [ "esp:3V3", "sw_fan2:3", "red", [ "v0" ] ],
+    [ "sw_fan2:2", "esp:D17", "blue", [ "v0" ] ],
+    [ "sw_fan2:2", "motor_fan2:VCC", "blue", [ "v0" ] ],
+    [ "esp:GND.1", "motor_fan2:GND", "black", [ "v0" ] ]
+  ]
+}
