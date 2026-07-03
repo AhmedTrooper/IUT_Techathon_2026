@@ -53,6 +53,7 @@ async fn export_report(
         FROM device_history h
         JOIN devices d ON h.device_id = d.id
         ORDER BY h.timestamp DESC
+        LIMIT 1000
         "#,
     )
     .fetch_all(&state.pool)
