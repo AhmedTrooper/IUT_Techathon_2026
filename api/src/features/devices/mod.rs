@@ -1,0 +1,96 @@
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, PgPool};
+use tracing::{error, info};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Device {
+    pub id: String,
+    pub name: String,
+    pub room: String,
+    pub device_type: String,
+    pub status: bool,
+    pub power_consumption: i32, // in Watts
+    pub last_changed: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DeviceHistory {
+    pub id: i32,
+    pub device_id: String,
+    pub status: bool,
+    pub timestamp: DateTime<Utc>,
+}
+
+pub fn router() -> Router<PgPool> {
+    Router::new()
+        .route("/devices", get(get_devices))
+        .route("/devices/:id/toggle", post(toggle_device))
+}
+
+// GET /api/devices
+async fn get_devices(
+    State(pool): State<PgPool>,
+) -> Result<Json<Vec<Device>>, StatusCode> {
+    let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices ORDER BY room, name")
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| {
+            error!("Database error fetching devices: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(devices))
+}
+
+// POST /api/devices/:id/toggle
+async fn toggle_device(
+    Path(id): Path<String>,
+    State(pool): State<PgPool>,
+) -> Result<Json<Device>, StatusCode> {
+    // 1. Toggle status
+    let row: Option<Device> = sqlx::query_as(
+        r#"
+        UPDATE devices 
+        SET status = NOT status, last_changed = NOW()
+        WHERE id = $1
+        RETURNING *
+        "#,
+    )
+    .bind(&id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        error!("Database error toggling device {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    match row {
+        Some(device) => {
+            // 2. Log state change
+            if let Err(e) = sqlx::query(
+                r#"
+                INSERT INTO device_history (device_id, status, timestamp)
+                VALUES ($1, $2, NOW())
+                "#,
+            )
+            .bind(&device.id)
+            .bind(device.status)
+            .execute(&pool)
+            .await
+            {
+                error!("Database error inserting history for {}: {}", device.id, e);
+            }
+
+            info!("Device '{}' manually toggled to {}", device.id, if device.status { "ON" } else { "OFF" });
+            Ok(Json(device))
+        }
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}

@@ -1,15 +1,16 @@
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
-    Json,
+    routing::get,
+    Json, Router,
 };
 use chrono::{Utc, TimeZone, Datelike};
+use serde::Serialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
-use tracing::{error, info};
-use serde::Serialize;
+use tracing::error;
 
-use crate::models::{Device, DeviceHistory};
+use crate::features::devices::{Device, DeviceHistory};
 
 #[derive(Debug, Serialize)]
 pub struct RoomBreakdown {
@@ -24,70 +25,12 @@ pub struct UsageResponse {
     pub today_kwh: f64,
 }
 
-// GET /api/devices
-pub async fn get_devices(
-    State(pool): State<PgPool>,
-) -> Result<Json<Vec<Device>>, StatusCode> {
-    let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices ORDER BY room, name")
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| {
-            error!("Database error fetching devices: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    Ok(Json(devices))
-}
-
-// POST /api/devices/:id/toggle
-pub async fn toggle_device(
-    Path(id): Path<String>,
-    State(pool): State<PgPool>,
-) -> Result<Json<Device>, StatusCode> {
-    // 1. Toggle status
-    let row: Option<Device> = sqlx::query_as(
-        r#"
-        UPDATE devices 
-        SET status = NOT status, last_changed = NOW()
-        WHERE id = $1
-        RETURNING *
-        "#,
-    )
-    .bind(&id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| {
-        error!("Database error toggling device {}: {}", id, e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    match row {
-        Some(device) => {
-            // 2. Log state change
-            if let Err(e) = sqlx::query(
-                r#"
-                INSERT INTO device_history (device_id, status, timestamp)
-                VALUES ($1, $2, NOW())
-                "#,
-            )
-            .bind(&device.id)
-            .bind(device.status)
-            .execute(&pool)
-            .await
-            {
-                error!("Database error inserting history for {}: {}", device.id, e);
-                // We don't fail the request if log insertion fails, but log it
-            }
-
-            info!("Device '{}' manually toggled to {}", device.id, if device.status { "ON" } else { "OFF" });
-            Ok(Json(device))
-        }
-        None => Err(StatusCode::NOT_FOUND),
-    }
+pub fn router() -> Router<PgPool> {
+    Router::new().route("/usage", get(get_usage))
 }
 
 // GET /api/usage
-pub async fn get_usage(
+async fn get_usage(
     State(pool): State<PgPool>,
 ) -> Result<Json<UsageResponse>, StatusCode> {
     // 1. Fetch all devices to compute current usage
@@ -150,7 +93,6 @@ async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f64, s
         .await?;
 
         // Determine initial state at 00:00:00 today.
-        // We find the last state change before today_start.
         let last_before: Option<(bool,)> = sqlx::query_as(
             r#"
             SELECT status FROM device_history 
@@ -164,13 +106,11 @@ async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f64, s
         .fetch_optional(pool)
         .await?;
 
-        // If no history exists before today, default to false (OFF)
         let mut current_state = last_before.map(|(status,)| status).unwrap_or(false);
         let mut current_time = today_start;
 
         for event in history {
             if current_state {
-                // Device was ON during the interval [current_time, event.timestamp]
                 let duration_secs = (event.timestamp - current_time).num_seconds() as f64;
                 total_watt_seconds += duration_secs * (device.power_consumption as f64);
             }
@@ -178,16 +118,12 @@ async fn calculate_today_kwh(pool: &PgPool, devices: &[Device]) -> Result<f64, s
             current_time = event.timestamp;
         }
 
-        // If the device is currently ON, it remains ON from the last event until now
         if current_state {
             let duration_secs = (now - current_time).num_seconds() as f64;
             total_watt_seconds += duration_secs * (device.power_consumption as f64);
         }
     }
 
-    // Convert Watt-seconds to kWh:
-    // 1 Watt-second = 1 Joule
-    // 1 kWh = 3,600,000 Joules (Watt-seconds)
     let total_kwh = total_watt_seconds / 3_600_000.0;
     Ok(total_kwh)
 }

@@ -7,7 +7,6 @@ pub fn start_simulator(pool: PgPool) {
     tokio::spawn(async move {
         info!("Starting background device simulator...");
         loop {
-            // Wait between 3 to 7 seconds before toggling a random device
             let seconds = rand::random::<u64>() % 5 + 3;
             sleep(Duration::from_secs(seconds)).await;
 
@@ -19,7 +18,6 @@ pub fn start_simulator(pool: PgPool) {
 }
 
 async fn toggle_random_device(pool: &PgPool) -> Result<(), sqlx::Error> {
-    // 1. Fetch all devices to get a list of valid IDs
     let devices: Vec<String> = sqlx::query_scalar("SELECT id FROM devices")
         .fetch_all(pool)
         .await?;
@@ -28,11 +26,9 @@ async fn toggle_random_device(pool: &PgPool) -> Result<(), sqlx::Error> {
         return Ok(());
     }
 
-    // 2. Select a random device
     let random_index = rand::random::<usize>() % devices.len();
     let device_id = &devices[random_index];
 
-    // 3. Toggle its status in the devices table
     let row: Option<(bool,)> = sqlx::query_as(
         r#"
         UPDATE devices 
@@ -46,7 +42,6 @@ async fn toggle_random_device(pool: &PgPool) -> Result<(), sqlx::Error> {
     .await?;
 
     if let Some((new_status,)) = row {
-        // 4. Log the state change in the history table
         sqlx::query(
             r#"
             INSERT INTO device_history (device_id, status, timestamp)
