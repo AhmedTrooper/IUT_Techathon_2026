@@ -7,7 +7,7 @@ pub fn start_simulator(pool: PgPool) {
     tokio::spawn(async move {
         info!("Starting background device simulator...");
         loop {
-            let seconds = rand::random::<u64>() % 5 + 3;
+            let seconds = rand::random::<u64>() % 30 + 30;
             sleep(Duration::from_secs(seconds)).await;
 
             if let Err(e) = toggle_random_device(&pool).await {

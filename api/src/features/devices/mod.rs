@@ -206,20 +206,17 @@ async fn get_devices(
     }
 }
 
-async fn toggle_device(
-    Path(id): Path<String>,
-    State(state): State<AppState>,
-) -> Result<Json<Device>, StatusCode> {
-    let device_id = match DeviceId::from_str(&id) {
+pub async fn toggle_device_internal(
+    state: &AppState,
+    id: &str,
+) -> Result<Device, StatusCode> {
+    let device_id = match DeviceId::from_str(id) {
         Ok(d) => d,
         Err(_) => return Err(StatusCode::BAD_REQUEST),
     };
 
     let db_result = async {
-        let mut tx = state.pool.begin().await.map_err(|e| {
-            error!("Fail-safe: transaction begin failed: {}", e);
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
+        let mut tx = state.pool.begin().await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
         let device: Option<Device> = sqlx::query_as(
             "SELECT * FROM devices WHERE id = $1 FOR UPDATE"
@@ -251,33 +248,40 @@ async fn toggle_device(
         .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-        let _ = sqlx::query(
+        sqlx::query(
             r#"
             INSERT INTO device_history (device_id, status, timestamp)
             VALUES ($1, $2, NOW())
             "#,
         )
-        .bind(&updated_device.id)
+        .bind(device_id.as_str())
         .bind(updated_device.status)
         .execute(&mut *tx)
-        .await;
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
         tx.commit().await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+        let mut cache = state.memory_devices.write().await;
+        cache.insert(updated_device.id.clone(), updated_device.clone());
+
+        let mut hist_cache = state.memory_history.write().await;
+        hist_cache.push(DeviceHistory {
+            id: 0, 
+            device_id: updated_device.id.clone(),
+            status: updated_device.status,
+            timestamp: updated_device.last_changed,
+        });
+
         Ok(updated_device)
     }.await;
 
     match db_result {
-        Ok(updated_device) => {
-            let mut cache = state.memory_devices.write().await;
-            cache.insert(updated_device.id.clone(), updated_device.clone());
-            info!("Device '{}' toggled via Database.", updated_device.id);
-            Ok(Json(updated_device))
-        }
+        Ok(device) => Ok(device),
         Err(err) => {
             if err == StatusCode::NOT_FOUND || err == StatusCode::TOO_MANY_REQUESTS {
                 return Err(err);
             }
-            
             error!("Database toggle failed: {:?}. Using in-memory fallback.", err);
 
             let mut cache = state.memory_devices.write().await;
@@ -301,7 +305,14 @@ async fn toggle_device(
             });
 
             info!("Device '{}' toggled via In-Memory.", updated.id);
-            Ok(Json(updated))
+            Ok(updated)
         }
     }
+}
+
+async fn toggle_device(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<Device>, StatusCode> {
+    toggle_device_internal(&state, &id).await.map(Json)
 }

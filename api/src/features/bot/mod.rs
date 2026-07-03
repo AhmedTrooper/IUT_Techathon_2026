@@ -102,6 +102,43 @@ impl EventHandler for Handler {
             if let Err(e) = msg.channel_id.say(&ctx.http, response).await {
                 error!("Error sending message: {}", e);
             }
+        } else if content.starts_with("!toggle") {
+            let parts: Vec<&str> = content.split_whitespace().collect();
+            let response = if parts.len() > 1 {
+                let device_id = parts[1];
+                match crate::features::devices::toggle_device_internal(&self.state, device_id).await {
+                    Ok(device) => format!("Successfully toggled {}. It is now {}.", device.name, if device.status { "ON" } else { "OFF" }),
+                    Err(_) => "Failed to toggle device. Make sure the ID is correct and you aren't sending commands too fast.".to_string()
+                }
+            } else {
+                "Please provide a device ID. Example: `!toggle work_room_1_fan_1`".to_string()
+            };
+            if let Err(e) = msg.channel_id.say(&ctx.http, response).await {
+                error!("Error sending message: {}", e);
+            }
+        } else if content.starts_with("!demo_alert") {
+            // Secret demo command to forcefully simulate a 3-hour usage alert for Work Room 2
+            let pool = &self.state.pool;
+            let response = match sqlx::query(
+                "UPDATE devices SET status = true, last_changed = NOW() - INTERVAL '3 hours' WHERE room = 'work_room_2'"
+            ).execute(pool).await {
+                Ok(_) => {
+                    // Update cache as well
+                    let mut cache = self.state.memory_devices.write().await;
+                    for device in cache.values_mut() {
+                        if device.room == "work_room_2" {
+                            device.status = true;
+                            device.last_changed = Utc::now() - chrono::Duration::hours(3);
+                        }
+                    }
+                    "Demo Alert Triggered: Work Room 2 devices set to ON for 3 hours. Wait 60s for the proactive alert!"
+                },
+                Err(e) => {
+                    error!("Failed to trigger demo alert: {}", e);
+                    "Failed to trigger demo."
+                }
+            };
+            let _ = msg.channel_id.say(&ctx.http, response).await;
         }
     }
 
