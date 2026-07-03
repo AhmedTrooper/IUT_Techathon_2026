@@ -496,10 +496,12 @@ pub fn start_bot(token: String, state: AppState) {
             .ok()
             .and_then(|val| val.parse::<u64>().ok());
 
+        let sent_alerts = Arc::new(Mutex::new(HashSet::new()));
+
         let handler = Handler {
-            state,
+            state: state.clone(),
             alert_channel_id,
-            sent_alerts: Arc::new(Mutex::new(HashSet::new())),
+            sent_alerts: sent_alerts.clone(),
         };
 
         let intents = GatewayIntents::GUILD_MESSAGES
@@ -515,6 +517,30 @@ pub fn start_bot(token: String, state: AppState) {
                 return;
             }
         };
+
+        let http = client.http.clone();
+        let loop_state = state.clone();
+        
+        tokio::spawn(async move {
+            if let Some(channel_id) = alert_channel_id {
+                let channel = ChannelId::new(channel_id);
+                loop {
+                    sleep(Duration::from_secs(60)).await;
+                    let alerts = crate::features::alerts::check_alerts(&loop_state).await;
+                    let mut sent = sent_alerts.lock().await;
+                    
+                    let mut current_ids = HashSet::new();
+                    for alert in alerts {
+                        current_ids.insert(alert.id.clone());
+                        if !sent.contains(&alert.id) {
+                            let _ = channel.say(&http, format!("⚠️ **ALERT**: {}", alert.message)).await;
+                            sent.insert(alert.id);
+                        }
+                    }
+                    sent.retain(|id| current_ids.contains(id));
+                }
+            }
+        });
 
         if let Err(e) = client.start().await {
             error!("Serenity client error: {}", e);
