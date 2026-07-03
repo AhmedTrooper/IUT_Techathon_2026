@@ -9,9 +9,9 @@ use tower::ServiceExt;
 pub fn build_test_router(state: AppState) -> axum::Router {
     axum::Router::new()
         .nest("/api", axum::Router::new()
-            .nest("/", features::devices::router())
-            .nest("/", features::usage::router())
-            .nest("/", features::alerts::router())
+            .merge(features::devices::router())
+            .merge(features::usage::router())
+            .merge(features::alerts::router())
         )
         .with_state(state)
 }
@@ -21,7 +21,10 @@ fn create_fake_state() -> AppState {
         .connect_lazy("postgres://fake:fake@127.0.0.1:5432/fake")
         .unwrap();
     
-    let s3_config = aws_sdk_s3::config::Builder::new().region(aws_config::Region::new("us-east-1")).build();
+    let s3_config = aws_sdk_s3::config::Builder::new()
+        .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
+        .region(aws_config::Region::new("us-east-1"))
+        .build();
     let s3_client = aws_sdk_s3::Client::from_conf(s3_config);
     let redis_client = redis::Client::open("redis://127.0.0.1/").unwrap();
     

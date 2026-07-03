@@ -130,11 +130,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let api_routes = axum::Router::new()
-        .nest("/", features::devices::router())
-        .nest("/", features::usage::router())
-        .nest("/", features::reports::router())
-        .nest("/", features::alerts::router())
-        .nest("/", features::diagram::router())
+        .merge(features::devices::router())
+        .merge(features::usage::router())
+        .merge(features::reports::router())
+        .merge(features::alerts::router())
+        .merge(features::diagram::router())
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), rate_limit_middleware));
 
     let app = axum::Router::new()

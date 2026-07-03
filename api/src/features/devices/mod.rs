@@ -178,7 +178,7 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/devices", get(get_devices))
-        .route("/devices/:id/toggle", post(toggle_device))
+        .route("/devices/{id}/toggle", post(toggle_device))
 }
 
 async fn get_devices(
