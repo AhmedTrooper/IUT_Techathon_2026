@@ -55,25 +55,32 @@ async fn toggle_device(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<Device>, StatusCode> {
-    let pool = &state.pool;
-    let current: Option<(DateTime<Utc>,)> = sqlx::query_as(
-        "SELECT last_changed FROM devices WHERE id = $1"
-    )
-    .bind(&id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| {
-        error!("Error fetching last changed: {}", e);
+    let mut tx = state.pool.begin().await.map_err(|e| {
+        error!("Failed to begin transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    if let Some((last,)) = current {
-        if Utc::now().signed_duration_since(last).num_milliseconds() < 500 {
-            return Err(StatusCode::TOO_MANY_REQUESTS);
-        }
+    let device: Option<Device> = sqlx::query_as(
+        "SELECT * FROM devices WHERE id = $1 FOR UPDATE"
+    )
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!("Error fetching device for update: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let device = match device {
+        Some(d) => d,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    if Utc::now().signed_duration_since(device.last_changed).num_milliseconds() < 500 {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    let row: Option<Device> = sqlx::query_as(
+    let updated_device: Device = sqlx::query_as(
         r#"
         UPDATE devices 
         SET status = NOT status, last_changed = NOW()
@@ -82,29 +89,29 @@ async fn toggle_device(
         "#,
     )
     .bind(&id)
-    .fetch_optional(pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
-        error!("Error updating device status {}: {}", id, e);
+        error!("Error toggling device: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    match row {
-        Some(device) => {
-            let _ = sqlx::query(
-                r#"
-                INSERT INTO device_history (device_id, status, timestamp)
-                VALUES ($1, $2, NOW())
-                "#,
-            )
-            .bind(&device.id)
-            .bind(device.status)
-            .execute(pool)
-            .await;
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO device_history (device_id, status, timestamp)
+        VALUES ($1, $2, NOW())
+        "#,
+    )
+    .bind(&updated_device.id)
+    .bind(updated_device.status)
+    .execute(&mut *tx)
+    .await;
 
-            info!("Device '{}' toggled to {}", device.id, if device.status { "ON" } else { "OFF" });
-            Ok(Json(device))
-        }
-        None => Err(StatusCode::NOT_FOUND),
-    }
+    tx.commit().await.map_err(|e| {
+        error!("Failed to commit transaction: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    info!("Device '{}' toggled to {}", updated_device.id, if updated_device.status { "ON" } else { "OFF" });
+    Ok(Json(updated_device))
 }

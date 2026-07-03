@@ -86,11 +86,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("DISCORD_TOKEN environment variable not set, skipping Discord Bot startup.");
     }
 
+    let api_routes = axum::Router::new()
+        .nest("/", features::devices::router())
+        .nest("/", features::usage::router())
+        .nest("/", features::reports::router())
+        .route_layer(axum::middleware::from_fn_with_state(state.clone(), rate_limit_middleware));
+
     let app = axum::Router::new()
         .route("/", axum::routing::get(|| async { "API is healthy" }))
-        .nest("/api", features::devices::router())
-        .nest("/api", features::usage::router())
-        .nest("/api", features::reports::router())
+        .nest("/api", api_routes)
         .layer(tower_http::cors::CorsLayer::permissive())
         .with_state(state);
 
@@ -102,4 +106,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn rate_limit_middleware(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<axum::response::Response, axum::http::StatusCode> {
+    use redis::AsyncCommands;
+
+    let ip = req.headers()
+        .get("x-forwarded-for")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| {
+            req.headers()
+                .get("x-real-ip")
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "127.0.0.1".to_string())
+        });
+
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        let redis_key = format!("ratelimit:{}", ip);
+        if let Ok(count) = con.incr::<_, _, i32>(&redis_key, 1).await {
+            if count == 1 {
+                let _: Result<(), _> = con.expire(&redis_key, 60).await;
+            }
+            if count > 60 {
+                return Err(axum::http::StatusCode::TOO_MANY_REQUESTS);
+            }
+        }
+    }
+
+    Ok(next.run(req).await)
 }

@@ -36,6 +36,22 @@ impl EventHandler for Handler {
 
         let content = msg.content.trim();
 
+        if content.starts_with("!") {
+            let author_id = msg.author.id.get();
+            if let Ok(mut con) = self.state.redis_client.get_multiplexed_async_connection().await {
+                let redis_key = format!("discord_ratelimit:{}", author_id);
+                if let Ok(count) = con.incr::<_, _, i32>(&redis_key, 1).await {
+                    if count == 1 {
+                        let _: Result<(), _> = con.expire(&redis_key, 10).await;
+                    }
+                    if count > 3 {
+                        let _ = msg.channel_id.say(&ctx.http, "⚠️ **Slow down!** You are sending commands too quickly.").await;
+                        return;
+                    }
+                }
+            }
+        }
+
         if content.starts_with("!status") {
             let raw_data = match get_raw_status(&self.state.pool).await {
                 Ok(data) => data,
