@@ -7,6 +7,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod db;
 mod features;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: sqlx::PgPool,

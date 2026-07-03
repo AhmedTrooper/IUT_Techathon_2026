@@ -89,3 +89,13 @@ Upload these to [Wokwi](https://wokwi.com) to view the representative circuit fo
 
 ## Fail-Safe Design
 The backend employs a strict "Graceful Degradation" protocol. If the PostgreSQL database crashes or disconnects during the demo, the API and Discord Bot will seamlessly fall back to an internal `tokio::sync::RwLock` memory cache. The dashboard will never go down.
+
+## Robust Automated Testing
+The API is fully covered by robust automated tests located in `api/src/tests.rs`. 
+These tests specifically verify our Graceful Degradation systems. They forcefully inject broken/fake database connections and offline Redis configurations into the `axum` router, and then strictly verify that every critical endpoint (`/devices`, `/usage`, `/alerts`) successfully intercepts the failure and returns accurate data from the in-memory cache.
+
+To execute the test suite, run:
+```bash
+cd api
+cargo test
+```
