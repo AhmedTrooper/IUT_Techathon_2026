@@ -7,6 +7,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod db;
 mod models;
 mod simulator;
+mod handlers;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -45,8 +46,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start background device simulator
     simulator::start_simulator(pool.clone());
 
-    // Simple test route to verify everything works
-    let app = axum::Router::new().route("/", axum::routing::get(|| async { "API is healthy" }));
+    // Build Axum router with state and permissive CORS layer
+    let app = axum::Router::new()
+        .route("/", axum::routing::get(|| async { "API is healthy" }))
+        .route("/api/devices", axum::routing::get(handlers::get_devices))
+        .route("/api/devices/:id/toggle", axum::routing::post(handlers::toggle_device))
+        .route("/api/usage", axum::routing::get(handlers::get_usage))
+        .layer(tower_http::cors::CorsLayer::permissive())
+        .with_state(pool.clone());
 
     let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
