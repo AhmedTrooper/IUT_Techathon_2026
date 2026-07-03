@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Device, UsageResponse } from "../types";
 
-const API_BASE = "http://localhost:8080/api";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
 
 export function useDashboardData() {
 	const [devices, setDevices] = useState<Device[]>([]);
