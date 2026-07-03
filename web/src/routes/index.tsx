@@ -1,43 +1,71 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { AlertsPanel } from "../features/dashboard/components/AlertsPanel";
+import { DevicePanel } from "../features/dashboard/components/DevicePanel";
+import { PowerMeter } from "../features/dashboard/components/PowerMeter";
+import { useDashboardData } from "../features/dashboard/hooks/useDashboardData";
 
 export const Route = createFileRoute("/")({
 	component: Home,
 });
 
 function Home() {
+	const { devices, usage, error, loading, toggleDevice } = useDashboardData();
+
+	if (loading) {
+		return (
+			<main className="page-wrap flex min-h-[70vh] flex-col items-center justify-center px-4 py-12">
+				<div className="flex flex-col items-center gap-3">
+					<div className="h-10 w-10 animate-spin rounded-full border-4 border-[var(--line)] border-t-teal-400" />
+					<p className="text-sm font-semibold text-[var(--sea-ink-soft)]">
+						Loading real-time dashboard data...
+					</p>
+				</div>
+			</main>
+		);
+	}
+
 	return (
-		<main className="page-wrap flex min-h-[70vh] flex-col items-center justify-center px-4 py-12 text-center">
-			<div className="island-shell relative overflow-hidden rounded-3xl p-8 sm:p-12 md:p-16 max-w-2xl w-full transition-all duration-300 hover:shadow-xl dark:shadow-[0_0_50px_rgba(255,255,255,0.02)]">
-				<div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-400" />
-				
-				<div className="mb-6 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--chip-bg)] border border-[var(--chip-line)] text-2xl animate-bounce">
-					✨
+		<main className="page-wrap px-4 py-8 md:py-12">
+			{/* Dashboard Header */}
+			<div className="mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-4">
+				<div>
+					<div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-teal-50 dark:bg-teal-950/30 px-2.5 py-0.5 text-xs font-bold text-teal-600 dark:text-teal-400 border border-teal-200/30">
+						<span className="h-1.5 w-1.5 rounded-full bg-teal-500 animate-pulse" />
+						Live Syncing
+					</div>
+					<h1 className="text-3xl font-black text-[var(--sea-ink)] tracking-tight sm:text-4xl md:text-5xl">
+						Office Electricity Monitor
+					</h1>
+					<p className="text-sm text-[var(--sea-ink-soft)] mt-1.5">
+						Real-time status, consumption levels, and anomalies breakdown across
+						the building.
+					</p>
 				</div>
 
-				<h1 className="mb-4 text-4xl font-extrabold tracking-tight text-[var(--sea-ink)] sm:text-5xl md:text-6xl bg-gradient-to-r from-[var(--sea-ink)] via-[var(--sea-ink-soft)] to-[var(--sea-ink)] bg-clip-text text-transparent">
-					hello from frontend
-				</h1>
+				{/* Connection status/error banner */}
+				{error && (
+					<div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-2xl p-3 flex items-center gap-2 text-xs font-semibold text-red-600 dark:text-red-400 max-w-sm">
+						<span>⚠️</span> Connection Error: Falling back to cached state.
+					</div>
+				)}
+			</div>
 
-				<p className="mx-auto mb-8 max-w-md text-base leading-relaxed text-[var(--sea-ink-soft)]">
-					A clean, minimalistic React application powered by TanStack Start. All extra routes and complexities have been removed.
-				</p>
+			<div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+				{/* Left Column: Device Status Panels */}
+				<div className="lg:col-span-2 space-y-6">
+					<h2 className="text-lg font-bold text-[var(--sea-ink-soft)] uppercase tracking-wider">
+						Rooms & Devices
+					</h2>
+					<DevicePanel devices={devices} onToggle={toggleDevice} />
+				</div>
 
-				<div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-					<button
-						type="button"
-						onClick={() => alert("Welcome to the streamlined experience!")}
-						className="w-full sm:w-auto px-6 py-3 text-sm font-semibold text-white bg-black dark:bg-white dark:text-black rounded-xl shadow-lg hover:opacity-90 active:scale-95 transition-all cursor-pointer"
-					>
-						Get Started
-					</button>
-					<a
-						href="https://tanstack.com/router/v1"
-						target="_blank"
-						rel="noreferrer"
-						className="w-full sm:w-auto px-6 py-3 text-sm font-semibold border border-[var(--line)] rounded-xl hover:bg-[var(--chip-bg)] active:scale-95 transition-all text-[var(--sea-ink)]"
-					>
-						Documentation
-					</a>
+				{/* Right Column: Statistics & System Alerts */}
+				<div className="space-y-6">
+					<h2 className="text-lg font-bold text-[var(--sea-ink-soft)] uppercase tracking-wider">
+						System Operations
+					</h2>
+					<PowerMeter usage={usage} />
+					<AlertsPanel devices={devices} />
 				</div>
 			</div>
 		</main>

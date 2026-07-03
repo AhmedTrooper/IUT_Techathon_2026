@@ -13,6 +13,8 @@ use chrono::{Utc, Timelike};
 use std::collections::HashSet;
 use tokio::sync::Mutex;
 use rig::client::ProviderClient;
+use rig::client::CompletionClient;
+use rig::completion::Prompt;
 
 use crate::features::devices::Device;
 use crate::features::usage::calculate_today_kwh;
@@ -290,22 +292,24 @@ async fn check_and_send_alerts(
 
 async fn humanize_response(raw_data: &str) -> String {
     if env::var("GEMINI_API_KEY").is_ok() {
-        let client = rig::providers::gemini::Client::from_env();
-        let agent = client
-            .agent("gemini-1.5-flash")
-            .preamble("You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.")
-            .build();
-        if let Ok(resp) = agent.prompt(raw_data).await {
-            return resp;
+        if let Ok(client) = rig::providers::gemini::Client::from_env() {
+            let agent = client
+                .agent("gemini-1.5-flash")
+                .preamble("You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.")
+                .build();
+            if let Ok(resp) = agent.prompt(raw_data).await {
+                return resp;
+            }
         }
     } else if env::var("OPENAI_API_KEY").is_ok() {
-        let client = rig::providers::openai::Client::from_env();
-        let agent = client
-            .agent("gpt-4o-mini")
-            .preamble("You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.")
-            .build();
-        if let Ok(resp) = agent.prompt(raw_data).await {
-            return resp;
+        if let Ok(client) = rig::providers::openai::Client::from_env() {
+            let agent = client
+                .agent("gpt-4o-mini")
+                .preamble("You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.")
+                .build();
+            if let Ok(resp) = agent.prompt(raw_data).await {
+                return resp;
+            }
         }
     }
     
