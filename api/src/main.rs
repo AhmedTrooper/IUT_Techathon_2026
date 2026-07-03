@@ -133,9 +133,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), rate_limit_middleware));
 
     let app = axum::Router::new()
-        .route("/", axum::routing::get(|| async { "API is healthy" }))
+        .route("/health", axum::routing::get(health_check))
         .nest("/api", api_routes)
         .layer(tower_http::cors::CorsLayer::permissive())
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
 
     let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
@@ -220,4 +221,56 @@ fn get_default_devices() -> std::collections::HashMap<String, features::devices:
         }
     }
     map
+}
+
+#[derive(serde::Serialize)]
+struct HealthStatus {
+    status: &'static str,
+    postgres: &'static str,
+    redis: &'static str,
+    s3: &'static str,
+}
+
+async fn health_check(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> (axum::http::StatusCode, axum::Json<HealthStatus>) {
+    let mut postgres = "healthy";
+    let mut redis_status = "healthy";
+    let mut s3 = "healthy";
+    let mut has_error = false;
+
+    if sqlx::query("SELECT 1").execute(&state.pool).await.is_err() {
+        postgres = "unhealthy";
+        has_error = true;
+    }
+
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        let ping_res: Result<String, _> = redis::cmd("PING").query_async(&mut con).await;
+        if ping_res.is_err() {
+            redis_status = "unhealthy";
+            has_error = true;
+        }
+    } else {
+        redis_status = "unhealthy";
+        has_error = true;
+    }
+
+    if state.s3_client.head_bucket().bucket(&state.s3_bucket).send().await.is_err() {
+        s3 = "unhealthy";
+        has_error = true;
+    }
+
+    let status = if has_error { "unhealthy" } else { "healthy" };
+    let code = if has_error {
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        axum::http::StatusCode::OK
+    };
+
+    (code, axum::Json(HealthStatus {
+        status,
+        postgres,
+        redis: redis_status,
+        s3,
+    }))
 }
