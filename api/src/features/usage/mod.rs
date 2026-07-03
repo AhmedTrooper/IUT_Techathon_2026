@@ -9,6 +9,7 @@ use serde::Serialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use tracing::error;
+use redis::AsyncCommands;
 
 use crate::features::devices::{Device, DeviceHistory};
 
@@ -25,15 +26,18 @@ pub struct UsageResponse {
     pub today_kwh: f64,
 }
 
-pub fn router() -> Router<PgPool> {
+use crate::AppState;
+
+pub fn router() -> Router<AppState> {
     Router::new().route("/usage", get(get_usage))
 }
 
 async fn get_usage(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<UsageResponse>, StatusCode> {
+    let pool = &state.pool;
     let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await
         .map_err(|e| {
             error!("Error fetching devices: {}", e);
@@ -54,10 +58,28 @@ async fn get_usage(
         .map(|(room, current_watts)| RoomBreakdown { room, current_watts })
         .collect::<Vec<_>>();
 
-    let today_kwh = calculate_today_kwh(&pool, &devices).await.map_err(|e| {
-        error!("Error calculating today's kWh: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let mut cached_kwh: Option<f64> = None;
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        if let Ok(val) = con.get::<_, String>("today_kwh").await {
+            if let Ok(kwh) = val.parse::<f64>() {
+                cached_kwh = Some(kwh);
+            }
+        }
+    }
+
+    let today_kwh = match cached_kwh {
+        Some(kwh) => kwh,
+        None => {
+            let kwh = calculate_today_kwh(pool, &devices).await.map_err(|e| {
+                error!("Error calculating today's kWh: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+                let _: Result<(), _> = con.set_ex("today_kwh", kwh.to_string(), 3).await;
+            }
+            kwh
+        }
+    };
 
     Ok(Json(UsageResponse {
         total_current_watts,

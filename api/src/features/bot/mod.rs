@@ -9,18 +9,20 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{error, info};
-use chrono::{Utc, Timelike};
+use chrono::{Utc, Timelike, DateTime};
 use std::collections::HashSet;
 use tokio::sync::Mutex;
 use rig::client::ProviderClient;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use redis::AsyncCommands;
 
 use crate::features::devices::Device;
 use crate::features::usage::calculate_today_kwh;
+use crate::AppState;
 
 struct Handler {
-    pool: PgPool,
+    state: AppState,
     alert_channel_id: Option<u64>,
     sent_alerts: Arc<Mutex<HashSet<String>>>,
 }
@@ -35,7 +37,7 @@ impl EventHandler for Handler {
         let content = msg.content.trim();
 
         if content.starts_with("!status") {
-            let raw_data = match get_raw_status(&self.pool).await {
+            let raw_data = match get_raw_status(&self.state.pool).await {
                 Ok(data) => data,
                 Err(e) => {
                     error!("Error getting status: {}", e);
@@ -50,7 +52,7 @@ impl EventHandler for Handler {
             let parts: Vec<&str> = content.split_whitespace().collect();
             let room_query = if parts.len() > 1 { parts[1] } else { "" };
             
-            let raw_data = match get_raw_room_status(&self.pool, room_query).await {
+            let raw_data = match get_raw_room_status(&self.state.pool, room_query).await {
                 Ok(data) => data,
                 Err(e) => {
                     error!("Error getting room status: {}", e);
@@ -62,7 +64,7 @@ impl EventHandler for Handler {
                 error!("Error sending message: {}", e);
             }
         } else if content.starts_with("!usage") {
-            let raw_data = match get_raw_usage(&self.pool).await {
+            let raw_data = match get_raw_usage(&self.state).await {
                 Ok(data) => data,
                 Err(e) => {
                     error!("Error getting usage: {}", e);
@@ -73,6 +75,17 @@ impl EventHandler for Handler {
             if let Err(e) = msg.channel_id.say(&ctx.http, response).await {
                 error!("Error sending message: {}", e);
             }
+        } else if content.starts_with("!export") {
+            let response = match handle_export(&self.state).await {
+                Ok(url) => format!("Here is your exported power history report (valid for 15 minutes):\n{}", url),
+                Err(e) => {
+                    error!("Error generating export: {}", e);
+                    "Sorry, I encountered an error generating your report.".to_string()
+                }
+            };
+            if let Err(e) = msg.channel_id.say(&ctx.http, response).await {
+                error!("Error sending message: {}", e);
+            }
         }
     }
 
@@ -80,7 +93,7 @@ impl EventHandler for Handler {
         info!("Discord Bot {} is connected!", ready.user.name);
 
         if let Some(channel_id) = self.alert_channel_id {
-            let pool = self.pool.clone();
+            let pool = self.state.pool.clone();
             let http = ctx.http.clone();
             let sent_alerts = self.sent_alerts.clone();
 
@@ -181,7 +194,8 @@ async fn get_raw_room_status(pool: &PgPool, query: &str) -> Result<String, sqlx:
     Ok(response)
 }
 
-async fn get_raw_usage(pool: &PgPool) -> Result<String, sqlx::Error> {
+async fn get_raw_usage(state: &AppState) -> Result<String, sqlx::Error> {
+    let pool = &state.pool;
     let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
         .fetch_all(pool)
         .await?;
@@ -193,7 +207,25 @@ async fn get_raw_usage(pool: &PgPool) -> Result<String, sqlx::Error> {
         }
     }
 
-    let today_kwh = calculate_today_kwh(pool, &devices).await?;
+    let mut cached_kwh: Option<f64> = None;
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        if let Ok(val) = con.get::<_, String>("today_kwh").await {
+            if let Ok(kwh) = val.parse::<f64>() {
+                cached_kwh = Some(kwh);
+            }
+        }
+    }
+
+    let today_kwh = match cached_kwh {
+        Some(kwh) => kwh,
+        None => {
+            let kwh = calculate_today_kwh(pool, &devices).await?;
+            if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+                let _: Result<(), _> = con.set_ex("today_kwh", kwh.to_string(), 3).await;
+            }
+            kwh
+        }
+    };
 
     Ok(format!(
         "Total power right now: {}W. Today's estimated usage: {:.2} kWh.",
@@ -307,7 +339,61 @@ async fn humanize_response(raw_data: &str) -> String {
     format!("Here is the status summary:\n\n{}", raw_data)
 }
 
-pub fn start_bot(token: String, pool: PgPool) {
+#[derive(Debug, sqlx::FromRow)]
+struct ExportHistoryRow {
+    timestamp: DateTime<Utc>,
+    device_id: String,
+    name: String,
+    room: String,
+    status: bool,
+}
+
+async fn handle_export(state: &AppState) -> Result<String, Box<dyn std::error::Error>> {
+    let rows = sqlx::query_as::<_, ExportHistoryRow>(
+        r#"
+        SELECT h.timestamp, h.device_id, d.name, d.room, h.status 
+        FROM device_history h
+        JOIN devices d ON h.device_id = d.id
+        ORDER BY h.timestamp DESC
+        "#,
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut csv_content = String::from("Timestamp,Device ID,Device Name,Room,Status\n");
+    for row in rows {
+        csv_content.push_str(&format!(
+            "{},{},{},{},{}\n",
+            row.timestamp.to_rfc3339(),
+            row.device_id,
+            row.name,
+            row.room,
+            if row.status { "ON" } else { "OFF" }
+        ));
+    }
+
+    let file_key = format!("reports/power_report_{}.csv", Utc::now().timestamp());
+
+    state.s3_client
+        .put_object()
+        .bucket(&state.s3_bucket)
+        .key(&file_key)
+        .body(aws_sdk_s3::primitives::ByteStream::from(csv_content.into_bytes()))
+        .content_type("text/csv")
+        .send()
+        .await?;
+
+    let presigned = state.s3_client
+        .get_object()
+        .bucket(&state.s3_bucket)
+        .key(&file_key)
+        .presigned(aws_sdk_s3::presigning::PresigningConfig::expires_in(Duration::from_secs(900))?)
+        .await?;
+
+    Ok(presigned.uri().to_string())
+}
+
+pub fn start_bot(token: String, state: AppState) {
     tokio::spawn(async move {
         info!("Starting Discord Bot gateway listener...");
 
@@ -316,7 +402,7 @@ pub fn start_bot(token: String, pool: PgPool) {
             .and_then(|val| val.parse::<u64>().ok());
 
         let handler = Handler {
-            pool,
+            state,
             alert_channel_id,
             sent_alerts: Arc::new(Mutex::new(HashSet::new())),
         };

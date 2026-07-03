@@ -7,6 +7,14 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod db;
 mod features;
 
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: sqlx::PgPool,
+    pub s3_client: aws_sdk_s3::Client,
+    pub s3_bucket: String,
+    pub redis_client: redis::Client,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
@@ -38,10 +46,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Database initialized successfully.");
 
+    let s3_endpoint = env::var("S3_ENDPOINT").unwrap_or_else(|_| "http://localhost:9000".to_string());
+    let s3_access_key = env::var("S3_ACCESS_KEY").unwrap_or_else(|_| "admin".to_string());
+    let s3_secret_key = env::var("S3_SECRET_KEY").unwrap_or_else(|_| "supersecretpassword".to_string());
+    let s3_bucket = env::var("S3_BUCKET").unwrap_or_else(|_| "iut-techathon-2026-bucket".to_string());
+
+    let credentials = aws_sdk_s3::config::Credentials::new(
+        s3_access_key,
+        s3_secret_key,
+        None,
+        None,
+        "static",
+    );
+
+    let s3_config = aws_sdk_s3::config::Builder::new()
+        .endpoint_url(s3_endpoint)
+        .credentials_provider(aws_sdk_s3::config::SharedCredentialsProvider::new(credentials))
+        .region(aws_config::Region::new("us-east-1"))
+        .force_path_style(true)
+        .build();
+
+    let s3_client = aws_sdk_s3::Client::from_conf(s3_config);
+
+    let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let redis_client = redis::Client::open(redis_url)?;
+
+    let state = AppState {
+        pool: pool.clone(),
+        s3_client,
+        s3_bucket,
+        redis_client,
+    };
+
     features::simulator::start_simulator(pool.clone());
 
     if let Ok(token) = env::var("DISCORD_TOKEN") {
-        features::bot::start_bot(token, pool.clone());
+        features::bot::start_bot(token, state.clone());
     } else {
         info!("DISCORD_TOKEN environment variable not set, skipping Discord Bot startup.");
     }
@@ -50,8 +90,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/", axum::routing::get(|| async { "API is healthy" }))
         .nest("/api", features::devices::router())
         .nest("/api", features::usage::router())
+        .nest("/api", features::reports::router())
         .layer(tower_http::cors::CorsLayer::permissive())
-        .with_state(pool.clone());
+        .with_state(state);
 
     let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);

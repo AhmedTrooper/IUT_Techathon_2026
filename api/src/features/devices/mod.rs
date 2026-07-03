@@ -6,7 +6,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, PgPool};
+use sqlx::FromRow;
 use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -28,17 +28,20 @@ pub struct DeviceHistory {
     pub timestamp: DateTime<Utc>,
 }
 
-pub fn router() -> Router<PgPool> {
+use crate::AppState;
+
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/devices", get(get_devices))
         .route("/devices/:id/toggle", post(toggle_device))
 }
 
 async fn get_devices(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<Vec<Device>>, StatusCode> {
+    let pool = &state.pool;
     let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices ORDER BY room, name")
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await
         .map_err(|e| {
             error!("Error fetching devices: {}", e);
@@ -50,13 +53,14 @@ async fn get_devices(
 
 async fn toggle_device(
     Path(id): Path<String>,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<Device>, StatusCode> {
+    let pool = &state.pool;
     let current: Option<(DateTime<Utc>,)> = sqlx::query_as(
         "SELECT last_changed FROM devices WHERE id = $1"
     )
     .bind(&id)
-    .fetch_optional(&pool)
+    .fetch_optional(pool)
     .await
     .map_err(|e| {
         error!("Error fetching last changed: {}", e);
@@ -78,7 +82,7 @@ async fn toggle_device(
         "#,
     )
     .bind(&id)
-    .fetch_optional(&pool)
+    .fetch_optional(pool)
     .await
     .map_err(|e| {
         error!("Error updating device status {}: {}", id, e);
@@ -95,7 +99,7 @@ async fn toggle_device(
             )
             .bind(&device.id)
             .bind(device.status)
-            .execute(&pool)
+            .execute(pool)
             .await;
 
             info!("Device '{}' toggled to {}", device.id, if device.status { "ON" } else { "OFF" });
