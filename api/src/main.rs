@@ -71,6 +71,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     let redis_client = redis::Client::open(redis_url)?;
 
+    info!("Verifying S3 bucket '{}' exists...", s3_bucket);
+    match s3_client.head_bucket().bucket(&s3_bucket).send().await {
+        Ok(_) => info!("S3 bucket '{}' already exists.", s3_bucket),
+        Err(_) => {
+            info!("S3 bucket '{}' does not exist. Creating...", s3_bucket);
+            if let Err(e) = s3_client.create_bucket().bucket(&s3_bucket).send().await {
+                error!("Failed to create S3 bucket: {}", e);
+            }
+        }
+    }
+
     let state = AppState {
         pool: pool.clone(),
         s3_client,
