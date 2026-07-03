@@ -131,6 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/", features::usage::router())
         .nest("/", features::reports::router())
         .nest("/", features::alerts::router())
+        .nest("/", features::diagram::router())
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), rate_limit_middleware));
 
     let app = axum::Router::new()
