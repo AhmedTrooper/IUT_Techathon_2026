@@ -1,17 +1,27 @@
 use axum::{
-    http::{header, StatusCode},
-    response::IntoResponse,
-    routing::get,
-    Router,
+    extract::State,
+    http::StatusCode,
+    routing::post,
+    Json, Router,
 };
+use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::presigning::PresigningConfig;
+use std::time::Duration;
 use tracing::{error, info};
 use crate::AppState;
+use serde::Serialize;
+use chrono::Utc;
 
-pub fn router() -> Router<AppState> {
-    Router::new().route("/diagram", get(get_diagram))
+#[derive(Serialize)]
+pub struct DiagramResponse {
+    pub download_url: String,
 }
 
-async fn get_diagram() -> Result<impl IntoResponse, StatusCode> {
+pub fn router() -> Router<AppState> {
+    Router::new().route("/diagram/compile", post(compile_diagram))
+}
+
+async fn compile_diagram(State(state): State<AppState>) -> Result<Json<DiagramResponse>, StatusCode> {
     let tex_content = r#"
 \documentclass[tikz,border=10pt]{standalone}
 \usepackage{tikz}
@@ -45,12 +55,22 @@ async fn get_diagram() -> Result<impl IntoResponse, StatusCode> {
 
 \end{tikzpicture}
 \end{document}
-    "#;
+    "#.to_string();
 
-    info!("Compiling LaTeX diagram using Tectonic...");
+    info!("Compiling LaTeX diagram using Tectonic on an 8MB stack thread...");
     
     let pdf_data = match tokio::task::spawn_blocking(move || {
-        tectonic::latex_to_pdf(tex_content)
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let res = tectonic::latex_to_pdf(tex_content);
+                let _ = tx.send(res);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        rx.recv().unwrap()
     }).await {
         Ok(Ok(pdf)) => pdf,
         Ok(Err(e)) => {
@@ -63,8 +83,33 @@ async fn get_diagram() -> Result<impl IntoResponse, StatusCode> {
         }
     };
 
-    Ok((
-        [(header::CONTENT_TYPE, "application/pdf")],
-        pdf_data,
-    ))
+    let file_key = format!("diagrams/system_diagram_{}.pdf", Utc::now().timestamp());
+
+    state.s3_client
+        .put_object()
+        .bucket(&state.s3_bucket)
+        .key(&file_key)
+        .body(ByteStream::from(pdf_data))
+        .content_type("application/pdf")
+        .send()
+        .await
+        .map_err(|e| {
+            error!("Error uploading diagram to S3: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let presigned = state.s3_client
+        .get_object()
+        .bucket(&state.s3_bucket)
+        .key(&file_key)
+        .presigned(PresigningConfig::expires_in(Duration::from_secs(900)).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
+        .await
+        .map_err(|e| {
+            error!("Error generating presigned S3 url: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(DiagramResponse {
+        download_url: presigned.uri().to_string(),
+    }))
 }
