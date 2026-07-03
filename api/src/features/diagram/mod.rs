@@ -1,7 +1,7 @@
 use axum::{
     extract::State,
     http::StatusCode,
-    routing::post,
+    routing::{post, delete},
     Json, Router,
 };
 use aws_sdk_s3::primitives::ByteStream;
@@ -22,7 +22,30 @@ pub struct DiagramResponse {
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/api/diagram/compile", post(compile_diagram))
+    Router::new()
+        .route("/api/diagram/compile", post(compile_diagram))
+        .route("/api/diagram/cache", delete(clear_cache))
+}
+
+async fn clear_cache() -> Result<&'static str, StatusCode> {
+    info!("Attempting to clear Tectonic cache to free up VPS storage...");
+    if let Ok(home) = std::env::var("HOME") {
+        let cache_path = format!("{}/.cache/Tectonic", home);
+        if std::path::Path::new(&cache_path).exists() {
+            if let Err(e) = tokio::fs::remove_dir_all(&cache_path).await {
+                error!("Failed to remove Tectonic cache: {}", e);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+            info!("Tectonic cache completely cleared.");
+            Ok("Tectonic cache cleared successfully.")
+        } else {
+            info!("Tectonic cache did not exist.");
+            Ok("Tectonic cache does not exist, nothing to clear.")
+        }
+    } else {
+        error!("Could not resolve HOME directory.");
+        Err(StatusCode::INTERNAL_SERVER_ERROR)
+    }
 }
 
 async fn compile_diagram(
