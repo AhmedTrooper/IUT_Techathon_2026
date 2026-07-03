@@ -9,6 +9,137 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use tracing::{error, info};
 
+use std::str::FromStr;
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Room {
+    DrawingRoom,
+    WorkRoom1,
+    WorkRoom2,
+}
+
+#[allow(dead_code)]
+impl Room {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::DrawingRoom => "drawing_room",
+            Self::WorkRoom1 => "work_room_1",
+            Self::WorkRoom2 => "work_room_2",
+        }
+    }
+}
+
+impl FromStr for Room {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "drawing_room" => Ok(Self::DrawingRoom),
+            "work_room_1" => Ok(Self::WorkRoom1),
+            "work_room_2" => Ok(Self::WorkRoom2),
+            _ => Err(()),
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceType {
+    Fan,
+    Light,
+}
+
+#[allow(dead_code)]
+impl DeviceType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Fan => "fan",
+            Self::Light => "light",
+        }
+    }
+}
+
+impl FromStr for DeviceType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "fan" => Ok(Self::Fan),
+            "light" => Ok(Self::Light),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceId {
+    DrawingRoomFan1,
+    DrawingRoomFan2,
+    DrawingRoomLight1,
+    DrawingRoomLight2,
+    DrawingRoomLight3,
+    WorkRoom1Fan1,
+    WorkRoom1Fan2,
+    WorkRoom1Light1,
+    WorkRoom1Light2,
+    WorkRoom1Light3,
+    WorkRoom2Fan1,
+    WorkRoom2Fan2,
+    WorkRoom2Light1,
+    WorkRoom2Light2,
+    WorkRoom2Light3,
+}
+
+impl DeviceId {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::DrawingRoomFan1 => "drawing_room_fan_1",
+            Self::DrawingRoomFan2 => "drawing_room_fan_2",
+            Self::DrawingRoomLight1 => "drawing_room_light_1",
+            Self::DrawingRoomLight2 => "drawing_room_light_2",
+            Self::DrawingRoomLight3 => "drawing_room_light_3",
+            Self::WorkRoom1Fan1 => "work_room_1_fan_1",
+            Self::WorkRoom1Fan2 => "work_room_1_fan_2",
+            Self::WorkRoom1Light1 => "work_room_1_light_1",
+            Self::WorkRoom1Light2 => "work_room_1_light_2",
+            Self::WorkRoom1Light3 => "work_room_1_light_3",
+            Self::WorkRoom2Fan1 => "work_room_2_fan_1",
+            Self::WorkRoom2Fan2 => "work_room_2_fan_2",
+            Self::WorkRoom2Light1 => "work_room_2_light_1",
+            Self::WorkRoom2Light2 => "work_room_2_light_2",
+            Self::WorkRoom2Light3 => "work_room_2_light_3",
+        }
+    }
+}
+
+impl FromStr for DeviceId {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "drawing_room_fan_1" => Ok(Self::DrawingRoomFan1),
+            "drawing_room_fan_2" => Ok(Self::DrawingRoomFan2),
+            "drawing_room_light_1" => Ok(Self::DrawingRoomLight1),
+            "drawing_room_light_2" => Ok(Self::DrawingRoomLight2),
+            "drawing_room_light_3" => Ok(Self::DrawingRoomLight3),
+            "work_room_1_fan_1" => Ok(Self::WorkRoom1Fan1),
+            "work_room_1_fan_2" => Ok(Self::WorkRoom1Fan2),
+            "work_room_1_light_1" => Ok(Self::WorkRoom1Light1),
+            "work_room_1_light_2" => Ok(Self::WorkRoom1Light2),
+            "work_room_1_light_3" => Ok(Self::WorkRoom1Light3),
+            "work_room_2_fan_1" => Ok(Self::WorkRoom2Fan1),
+            "work_room_2_fan_2" => Ok(Self::WorkRoom2Fan2),
+            "work_room_2_light_1" => Ok(Self::WorkRoom2Light1),
+            "work_room_2_light_2" => Ok(Self::WorkRoom2Light2),
+            "work_room_2_light_3" => Ok(Self::WorkRoom2Light3),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Device {
     pub id: String,
@@ -16,9 +147,23 @@ pub struct Device {
     pub room: String,
     pub device_type: String,
     pub status: bool,
-    pub power_consumption: i32, // in Watts
+    pub power_consumption: i32,
     pub last_changed: DateTime<Utc>,
 }
+
+#[allow(dead_code)]
+impl Device {
+    pub fn device_id(&self) -> Result<DeviceId, ()> {
+        self.id.parse()
+    }
+    pub fn room_enum(&self) -> Result<Room, ()> {
+        self.room.parse()
+    }
+    pub fn type_enum(&self) -> Result<DeviceType, ()> {
+        self.device_type.parse()
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct DeviceHistory {
@@ -55,18 +200,10 @@ async fn toggle_device(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<Device>, StatusCode> {
-    let is_valid = matches!(id.as_str(),
-        "drawing_room_fan_1" | "drawing_room_fan_2" |
-        "drawing_room_light_1" | "drawing_room_light_2" | "drawing_room_light_3" |
-        "work_room_1_fan_1" | "work_room_1_fan_2" |
-        "work_room_1_light_1" | "work_room_1_light_2" | "work_room_1_light_3" |
-        "work_room_2_fan_1" | "work_room_2_fan_2" |
-        "work_room_2_light_1" | "work_room_2_light_2" | "work_room_2_light_3"
-    );
-
-    if !is_valid {
-        return Err(StatusCode::BAD_REQUEST);
-    }
+    let device_id = match DeviceId::from_str(&id) {
+        Ok(d) => d,
+        Err(_) => return Err(StatusCode::BAD_REQUEST),
+    };
 
     let mut tx = state.pool.begin().await.map_err(|e| {
         error!("Failed to begin transaction: {}", e);
@@ -76,7 +213,7 @@ async fn toggle_device(
     let device: Option<Device> = sqlx::query_as(
         "SELECT * FROM devices WHERE id = $1 FOR UPDATE"
     )
-    .bind(&id)
+    .bind(device_id.as_str())
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
@@ -101,7 +238,7 @@ async fn toggle_device(
         RETURNING *
         "#,
     )
-    .bind(&id)
+    .bind(device_id.as_str())
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
