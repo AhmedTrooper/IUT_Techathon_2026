@@ -127,6 +127,20 @@ impl EventHandler for Handler {
 }
 
 
+fn format_room_device_counts(fans: i32, lights: i32) -> String {
+    if fans == 0 && lights == 0 {
+        return "all off".to_string();
+    }
+    let mut parts = Vec::new();
+    if fans > 0 {
+        parts.push(format!("{} fan{}", fans, if fans == 1 { " ON" } else { "s ON" }));
+    }
+    if lights > 0 {
+        parts.push(format!("{} light{}", lights, if lights == 1 { " ON" } else { "s ON" }));
+    }
+    parts.join(", ")
+}
+
 async fn get_raw_status(pool: &PgPool) -> Result<String, sqlx::Error> {
     let devices = sqlx::query_as::<_, Device>("SELECT * FROM devices")
         .fetch_all(pool)
@@ -156,26 +170,12 @@ async fn get_raw_status(pool: &PgPool) -> Result<String, sqlx::Error> {
         }
     }
 
-    let drawing_status = if drawing_fans == 0 && drawing_lights == 0 {
-        "all off".to_string()
-    } else {
-        format!("{} fan ON, {} light ON", drawing_fans, drawing_lights)
-    };
-
-    let work1_status = if work1_fans == 0 && work1_lights == 0 {
-        "all off".to_string()
-    } else {
-        format!("{} fan ON, {} light ON", work1_fans, work1_lights)
-    };
-
-    let work2_status = if work2_fans == 0 && work2_lights == 0 {
-        "all off".to_string()
-    } else {
-        format!("{} fan ON, {} light ON", work2_fans, work2_lights)
-    };
+    let drawing_status = format_room_device_counts(drawing_fans, drawing_lights);
+    let work1_status = format_room_device_counts(work1_fans, work1_lights);
+    let work2_status = format_room_device_counts(work2_fans, work2_lights);
 
     Ok(format!(
-        "Drawing Room: {}.\nWork Room 1: {}.\nWork Room 2: {}.",
+        "Drawing Room: {}. Work Room 1: {}. Work Room 2: {}.",
         drawing_status, work1_status, work2_status
     ))
 }
