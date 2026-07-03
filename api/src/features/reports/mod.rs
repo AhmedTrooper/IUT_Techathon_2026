@@ -11,6 +11,7 @@ use std::time::Duration;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::presigning::PresigningConfig;
 use sqlx::FromRow;
+use redis::AsyncCommands;
 
 use crate::AppState;
 
@@ -35,6 +36,17 @@ pub fn router() -> Router<AppState> {
 async fn export_report(
     State(state): State<AppState>,
 ) -> Result<Json<ExportResponse>, StatusCode> {
+    let mut cached_url: Option<String> = None;
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        if let Ok(val) = con.get::<_, String>("cached_export_url").await {
+            cached_url = Some(val);
+        }
+    }
+
+    if let Some(url) = cached_url {
+        return Ok(Json(ExportResponse { download_url: url }));
+    }
+
     let rows = sqlx::query_as::<_, HistoryRow>(
         r#"
         SELECT h.timestamp, h.device_id, d.name, d.room, h.status 
@@ -91,7 +103,12 @@ async fn export_report(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    let download_url = presigned.uri().to_string();
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        let _: Result<(), _> = con.set_ex("cached_export_url", &download_url, 300).await;
+    }
+
     Ok(Json(ExportResponse {
-        download_url: presigned.uri().to_string(),
+        download_url,
     }))
 }

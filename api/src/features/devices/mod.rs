@@ -55,6 +55,19 @@ async fn toggle_device(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<Device>, StatusCode> {
+    let is_valid = matches!(id.as_str(),
+        "drawing_room_fan_1" | "drawing_room_fan_2" |
+        "drawing_room_light_1" | "drawing_room_light_2" | "drawing_room_light_3" |
+        "work_room_1_fan_1" | "work_room_1_fan_2" |
+        "work_room_1_light_1" | "work_room_1_light_2" | "work_room_1_light_3" |
+        "work_room_2_fan_1" | "work_room_2_fan_2" |
+        "work_room_2_light_1" | "work_room_2_light_2" | "work_room_2_light_3"
+    );
+
+    if !is_valid {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let mut tx = state.pool.begin().await.map_err(|e| {
         error!("Failed to begin transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR

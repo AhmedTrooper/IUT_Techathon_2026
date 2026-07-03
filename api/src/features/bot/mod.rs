@@ -60,7 +60,7 @@ impl EventHandler for Handler {
                     "Sorry, I encountered an error fetching the status.".to_string()
                 }
             };
-            let response = humanize_response(&raw_data).await;
+            let response = humanize_response(&self.state, &raw_data).await;
             if let Err(e) = msg.channel_id.say(&ctx.http, response).await {
                 error!("Error sending message: {}", e);
             }
@@ -75,7 +75,7 @@ impl EventHandler for Handler {
                     "Sorry, I encountered an error fetching the room status.".to_string()
                 }
             };
-            let response = humanize_response(&raw_data).await;
+            let response = humanize_response(&self.state, &raw_data).await;
             if let Err(e) = msg.channel_id.say(&ctx.http, response).await {
                 error!("Error sending message: {}", e);
             }
@@ -87,7 +87,7 @@ impl EventHandler for Handler {
                     "Sorry, I encountered an error fetching the usage stats.".to_string()
                 }
             };
-            let response = humanize_response(&raw_data).await;
+            let response = humanize_response(&self.state, &raw_data).await;
             if let Err(e) = msg.channel_id.say(&ctx.http, response).await {
                 error!("Error sending message: {}", e);
             }
@@ -109,7 +109,7 @@ impl EventHandler for Handler {
         info!("Discord Bot {} is connected!", ready.user.name);
 
         if let Some(channel_id) = self.alert_channel_id {
-            let pool = self.state.pool.clone();
+            let state = self.state.clone();
             let http = ctx.http.clone();
             let sent_alerts = self.sent_alerts.clone();
 
@@ -117,7 +117,7 @@ impl EventHandler for Handler {
                 info!("Starting proactive Discord alert task for channel {}...", channel_id);
                 loop {
                     sleep(Duration::from_secs(60)).await;
-                    if let Err(e) = check_and_send_alerts(&pool, ChannelId::new(channel_id), &http, &sent_alerts).await {
+                    if let Err(e) = check_and_send_alerts(&state, ChannelId::new(channel_id), &http, &sent_alerts).await {
                         error!("Error checking alerts: {}", e);
                     }
                 }
@@ -250,11 +250,12 @@ async fn get_raw_usage(state: &AppState) -> Result<String, sqlx::Error> {
 }
 
 async fn check_and_send_alerts(
-    pool: &PgPool,
+    state: &AppState,
     channel_id: ChannelId,
     http: &Arc<serenity::http::Http>,
     sent_alerts: &Arc<Mutex<HashSet<String>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let pool = &state.pool;
     let now = Utc::now();
     let dhaka_offset = chrono::FixedOffset::east_opt(6 * 3600).unwrap();
     let now_dhaka = now.with_timezone(&dhaka_offset);
@@ -287,7 +288,7 @@ async fn check_and_send_alerts(
                     hour, now_dhaka.minute(), list
                 );
                 
-                let humanized = humanize_response(&alert_msg).await;
+                let humanized = humanize_response(state, &alert_msg).await;
                 channel_id.say(http, humanized).await?;
                 guard.insert(alert_key);
             }
@@ -314,7 +315,7 @@ async fn check_and_send_alerts(
                             room.replace("_", " "), min_dhaka.format("%H:%M Dhaka time")
                         );
                         
-                        let humanized = humanize_response(&alert_msg).await;
+                        let humanized = humanize_response(state, &alert_msg).await;
                         channel_id.say(http, humanized).await?;
                         guard.insert(alert_key);
                     }
@@ -329,16 +330,28 @@ async fn check_and_send_alerts(
     Ok(())
 }
 
-async fn humanize_response(raw_data: &str) -> String {
-    if env::var("GEMINI_API_KEY").is_ok() {
+async fn humanize_response(state: &AppState, raw_data: &str) -> String {
+    let redis_key = format!("llm_cache:{}", raw_data);
+
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        if let Ok(cached) = con.get::<_, String>(&redis_key).await {
+            return cached;
+        }
+    }
+
+    let response = if env::var("GEMINI_API_KEY").is_ok() {
         if let Ok(client) = rig::providers::gemini::Client::from_env() {
             let agent = client
                 .agent("gemini-1.5-flash")
                 .preamble("You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.")
                 .build();
             if let Ok(resp) = agent.prompt(raw_data).await {
-                return resp;
+                resp
+            } else {
+                format!("Here is the status summary:\n\n{}", raw_data)
             }
+        } else {
+            format!("Here is the status summary:\n\n{}", raw_data)
         }
     } else if env::var("OPENAI_API_KEY").is_ok() {
         if let Ok(client) = rig::providers::openai::Client::from_env() {
@@ -347,12 +360,22 @@ async fn humanize_response(raw_data: &str) -> String {
                 .preamble("You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.")
                 .build();
             if let Ok(resp) = agent.prompt(raw_data).await {
-                return resp;
+                resp
+            } else {
+                format!("Here is the status summary:\n\n{}", raw_data)
             }
+        } else {
+            format!("Here is the status summary:\n\n{}", raw_data)
         }
+    } else {
+        format!("Here is the status summary:\n\n{}", raw_data)
+    };
+
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        let _: Result<(), _> = con.set_ex(&redis_key, &response, 3600).await;
     }
-    
-    format!("Here is the status summary:\n\n{}", raw_data)
+
+    response
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -365,6 +388,17 @@ struct ExportHistoryRow {
 }
 
 async fn handle_export(state: &AppState) -> Result<String, Box<dyn std::error::Error>> {
+    let mut cached_url: Option<String> = None;
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        if let Ok(val) = con.get::<_, String>("cached_export_url").await {
+            cached_url = Some(val);
+        }
+    }
+
+    if let Some(url) = cached_url {
+        return Ok(url);
+    }
+
     let rows = sqlx::query_as::<_, ExportHistoryRow>(
         r#"
         SELECT h.timestamp, h.device_id, d.name, d.room, h.status 
@@ -406,7 +440,12 @@ async fn handle_export(state: &AppState) -> Result<String, Box<dyn std::error::E
         .presigned(aws_sdk_s3::presigning::PresigningConfig::expires_in(Duration::from_secs(900))?)
         .await?;
 
-    Ok(presigned.uri().to_string())
+    let download_url = presigned.uri().to_string();
+    if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
+        let _: Result<(), _> = con.set_ex("cached_export_url", &download_url, 300).await;
+    }
+
+    Ok(download_url)
 }
 
 pub fn start_bot(token: String, state: AppState) {
