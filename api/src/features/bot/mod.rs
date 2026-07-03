@@ -555,30 +555,6 @@ pub fn start_bot(token: String, state: AppState) {
             }
         };
 
-        let http = client.http.clone();
-        let loop_state = state.clone();
-        
-        tokio::spawn(async move {
-            if let Some(channel_id) = alert_channel_id {
-                let channel = ChannelId::new(channel_id);
-                loop {
-                    sleep(Duration::from_secs(60)).await;
-                    let alerts = crate::features::alerts::check_alerts(&loop_state).await;
-                    let mut sent = sent_alerts.lock().await;
-                    
-                    let mut current_ids = HashSet::new();
-                    for alert in alerts {
-                        current_ids.insert(alert.id.clone());
-                        if !sent.contains(&alert.id) {
-                            let _ = channel.say(&http, format!("⚠️ **ALERT**: {}", alert.message)).await;
-                            sent.insert(alert.id);
-                        }
-                    }
-                    sent.retain(|id| current_ids.contains(id));
-                }
-            }
-        });
-
         if let Err(e) = client.start().await {
             error!("Serenity client error: {}", e);
         }
