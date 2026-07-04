@@ -18,6 +18,7 @@ We have meticulously fulfilled every requirement and bonus point in the rulebook
 - [x] **Real-time Web Dashboard:** React UI polls `GET /api/devices` every 30s for live visual updates (no refresh needed).
 - [x] **Discord Bot (`!status`, `!usage`, `!room`):** Built into the backend using `serenity`.
 - [x] **AI Humanized Responses:** Integrates `rig` (supporting Gemini/OpenAI/Claude) to format raw JSON into conversational messages for the boss.
+- [x] **Data Export Pipeline:** Typing `!export` queries the database, dynamically builds a CSV, uploads it to an S3/MinIO bucket, and returns a secure presigned download link.
 - [x] **Bonus (Visual Layout):** Interactive 2D Floor Plan with glowing animations.
 - [x] **Bonus (Proactive Alerts):** Discord Bot pushes autonomous alerts for After-Hours & 2-Hour Waste rules directly to `#office-alerts`.
 
@@ -52,6 +53,7 @@ Because the rules require triggering alerts for **"Devices left on over 2 hours"
 - **PostgreSQL (SQLx):** Persistent, transactional source of truth for device states.
 - **Redis:** High-speed caching for rate-limiting and daily kWh calculations.
 - **Serenity & Rig:** WebSocket Discord integration and LLM prompt chaining.
+- **AWS SDK (S3):** Real-time CSV generation and presigned URL hosting via MinIO S3 object storage.
 
 ---
 
