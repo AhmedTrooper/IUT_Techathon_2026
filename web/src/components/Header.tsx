@@ -19,7 +19,7 @@ export default function Header() {
 
 				<div className="flex items-center gap-1.5 sm:gap-4">
 					<a
-						href="https://github.com/TanStack"
+						href="https://github.com/AhmedTrooper/IUT_Techathon_2026"
 						target="_blank"
 						rel="noreferrer"
 						className="rounded-xl p-2 text-[var(--sea-ink-soft)] transition hover:text-[var(--sea-ink)]"

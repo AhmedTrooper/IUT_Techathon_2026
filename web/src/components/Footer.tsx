@@ -7,30 +7,30 @@ export default function Footer() {
 				<p className="m-0 text-sm">
 					&copy; {year} IUT Techathon 2026 Team. All rights reserved.
 				</p>
-				<p className="island-kicker m-0">Built with TanStack Start</p>
+				<p className="island-kicker m-0">Built with Rust, React & Discord</p>
 			</div>
 			<div className="mt-4 flex justify-center gap-4">
 				<a
-					href="https://x.com/tan_stack"
+					href="https://www.linkedin.com/in/ahmedtrooper/"
 					target="_blank"
 					rel="noreferrer"
 					className="rounded-xl p-2 text-[var(--sea-ink-soft)] transition hover:bg-[var(--link-bg-hover)] hover:text-[var(--sea-ink)]"
 				>
-					<span className="sr-only">Follow TanStack on X</span>
-					<svg viewBox="0 0 16 16" aria-hidden="true" width="32" height="32">
+					<span className="sr-only">LinkedIn</span>
+					<svg viewBox="0 0 24 24" aria-hidden="true" width="32" height="32">
 						<path
 							fill="currentColor"
-							d="M12.6 1h2.2L10 6.48 15.64 15h-4.41L7.78 9.82 3.23 15H1l5.14-5.84L.72 1h4.52l3.12 4.73L12.6 1zm-.77 12.67h1.22L4.57 2.26H3.26l8.57 11.41z"
+							d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"
 						/>
 					</svg>
 				</a>
 				<a
-					href="https://github.com/TanStack"
+					href="https://github.com/AhmedTrooper/IUT_Techathon_2026"
 					target="_blank"
 					rel="noreferrer"
 					className="rounded-xl p-2 text-[var(--sea-ink-soft)] transition hover:bg-[var(--link-bg-hover)] hover:text-[var(--sea-ink)]"
 				>
-					<span className="sr-only">Go to TanStack GitHub</span>
+					<span className="sr-only">GitHub Repository</span>
 					<svg viewBox="0 0 16 16" aria-hidden="true" width="32" height="32">
 						<path
 							fill="currentColor"

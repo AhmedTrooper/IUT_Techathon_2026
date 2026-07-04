@@ -19,7 +19,11 @@ export const Route = createRootRoute({
 				content: "width=device-width, initial-scale=1",
 			},
 			{
-				title: "TanStack Start Starter",
+				title: "Office Electricity Monitor | IUT Techathon 2026",
+			},
+			{
+				name: "description",
+				content: "Real-time office electricity monitoring dashboard with live device status, power consumption tracking, anomaly alerts, and Discord bot integration.",
 			},
 		],
 		links: [
