@@ -101,11 +101,13 @@ If the PostgreSQL database or Redis cache crashes during the demo, the backend i
 
 ### REST Endpoints
 The backend provides a fully permissive CORS policy, allowing any client to interface with the office state:
+- `GET /health`: Returns health status of Postgres, Redis, and S3 dependencies.
 - `GET /api/devices`: Returns the live status of all 15 devices.
 - `POST /api/devices/{id}/toggle`: Safely toggles a device state with row-level locking.
 - `GET /api/usage`: Returns the live power meter and today's total estimated kWh.
 - `GET /api/alerts`: Returns active anomalies (after-hours usage, 2-hour continuous waste).
 - `POST /api/alerts/demo-time`: Fast-forwards the server clock to test time-based rules.
+- `POST /api/reports/export`: Dynamically builds a CSV of device history, uploads to S3, and returns a presigned download link.
 
 ### Test Suites
 This repository includes comprehensive automated testing for both the frontend and backend architectures:
