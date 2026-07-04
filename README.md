@@ -5,20 +5,20 @@ This is the complete, full-stack software and hardware simulation suite for the 
 
 The entire system is strictly built to satisfy every rule, requirement, and bonus point of the Hackathon.
 
-## 🏗️ System Architecture & Consistency
-The system was designed with a strict **Single Source of Truth** architecture to ensure that the Discord bot and the Web Dashboard always show the exact same reality.
+## 🏗️ System Architecture & Data Flow (Push vs. Pull)
+The system was designed with a strict **Single Source of Truth** architecture to ensure the Discord bot and Web Dashboard always show the exact same reality, but they use different data acquisition strategies:
 
 1. **The Core (Rust Backend & PostgreSQL):** The Axum API manages the PostgreSQL database. Every time a device state changes, it is locked, updated, and timestamped in Postgres.
 2. **The Hardware Simulator (Background Task):** A background thread safely toggles random devices every 30-60 seconds to simulate a live office. 
-3. **The Web Dashboard (React/Vite):** A beautiful, responsive UI that polls the backend every 30 seconds for live data. It maps device data onto a 2D floor plan of the office.
-4. **The Discord Bot (Serenity & Rig):** A bot that connects to the same backend. It queries the same database as the dashboard, feeds that raw data into an LLM (Gemini/OpenAI/Claude), and posts humanized responses back to Discord.
-5. **The Proactive Alerts Engine:** Both the dashboard and the Discord bot share a unified alerts engine that constantly checks for anomalies (e.g., 2-hour waste, after-hours usage).
+3. **The Web Dashboard (PULL):** The beautiful, responsive React/Vite UI uses an HTTP polling mechanism. Every 30 seconds, it reaches out to the backend (`GET /api/devices`) to PULL the latest data and map it onto the 2D floor plan.
+4. **The Discord Bot (PUSH):** The Discord bot is a background thread running natively *inside* the Rust API. Because it has direct memory access to the database cache, it doesn't need to make HTTP requests. It checks the data internally every 5 seconds, and if it detects an anomaly, it PUSHES a warning directly to Discord's servers.
+5. **The Unified Alerts Engine:** Both the dashboard and the Discord bot share a centralized alerts engine that constantly checks for anomalies (e.g., 2-hour waste, after-hours usage).
 
 *(A high-level visual system diagram is included in this repository as `system_diagram.pdf`)*
 
 ## 🚀 Key Features
 *   **Fail-Safe Degradation:** If the PostgreSQL database or Redis cache crashes, the entire backend instantly falls back to an internal `tokio::RwLock` memory cache. The dashboard and bot will never go offline.
-*   **Time-Travel Debugging:** A built-in UI feature that allows judges to fast-forward the server's internal clock to instantly demonstrate time-based anomaly alerts (Office Hours rule, 2-Hour rule) without waiting.
+*   **Time-Travel Debugging:** A built-in UI feature that allows judges to manually fast-forward the server's internal clock to demonstrate anomaly alerts (Office Hours rule, 2-Hour rule) without waiting. Clicking the **Reset Time** button instantly clears the offset, snapping the server back to real-world time and clearing the alerts.
 *   **AI Humanization:** The Discord bot uses the `rig` crate to translate JSON device data into warm, friendly messages.
 *   **Permissive CORS:** The API is accessible from any web frontend or automated testing system.
 
