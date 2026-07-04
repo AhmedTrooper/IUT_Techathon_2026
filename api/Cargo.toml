@@ -24,4 +24,3 @@ dotenvy = "0.15.7"
 rig = "0.39.0"
 rand = "0.8.5"
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "standard_framework"] }
-tectonic = "0.16.9"

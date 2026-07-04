@@ -17,7 +17,6 @@ The system consists of three main components:
 - **Rust Toolchain:** (v1.75+) `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - **PostgreSQL:** A running Postgres instance.
 - **Redis:** A running Redis server for rate-limiting and query caching.
-- **Tectonic (Optional):** Installed globally if you wish to recompile the LaTeX system diagrams locally.
 
 ### 2. Environment Variables
 Create a `.env` file in the `api/` directory with the following keys:
@@ -81,7 +80,6 @@ The backend will automatically:
 - `GET /api/usage`: Live power meter and today's total estimated kWh (Redis cached).
 - `GET /api/alerts`: Active anomaly detection (after-hours usage, 2-hour continuous waste).
 - `POST /api/reports/export`: Generate a CSV report and upload to S3.
-- `POST /api/diagram/compile`: Send LaTeX code to dynamically generate the architecture diagram (requires Tectonic).
 
 ## Hardware Schematic
 Inside the `wokwi/` directory, you will find `diagram.json` and `sketch.ino`. 

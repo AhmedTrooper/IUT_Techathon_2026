@@ -134,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(features::usage::router())
         .merge(features::reports::router())
         .merge(features::alerts::router())
-        .merge(features::diagram::router())
+
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), rate_limit_middleware));
 
     let cors = tower_http::cors::CorsLayer::permissive();
