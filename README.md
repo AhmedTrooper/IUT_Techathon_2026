@@ -290,6 +290,10 @@ bunx vitest run
 
 We have provided a fully containerized setup using Docker and Makefiles for an effortless developer experience.
 
+```bash
+git clone https://github.com/AhmedTrooper/IUT_Techathon_2026.git
+```
+
 ### 1. Environment Variables
 Create a `.env` file in the root directory (see `.env.example`):
 ```env
