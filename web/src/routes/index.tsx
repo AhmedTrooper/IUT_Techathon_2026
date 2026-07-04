@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertsPanel } from "../features/dashboard/components/AlertsPanel";
+import { DemoControls } from "../features/dashboard/components/DemoControls";
 import { DevicePanel } from "../features/dashboard/components/DevicePanel";
 import { OfficeLayout } from "../features/dashboard/components/OfficeLayout";
 import { PowerMeter } from "../features/dashboard/components/PowerMeter";
-import { DemoControls } from "../features/dashboard/components/DemoControls";
 import { useDashboardData } from "../features/dashboard/hooks/useDashboardData";
 
 export const Route = createFileRoute("/")({
@@ -75,7 +75,7 @@ function Home() {
 					<AlertsPanel alerts={alerts} />
 				</div>
 			</div>
-			
+
 			<DemoControls onUpdate={refetch} />
 		</main>
 	);

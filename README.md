@@ -14,7 +14,7 @@ Welcome to the ultimate solution for the "Lights, Fans, Discord" problem. This p
 ## 🏆 Hackathon Deliverables Checklist
 We have meticulously fulfilled every requirement and bonus point in the rulebook:
 - [x] **High-Level System Diagram:** Included in repo as `system_diagram.pdf`.
-- [x] **Hardware Schematic:** Included in the `wokwi/` folder (Conceptual ESP32 layout).
+- [x] **Hardware Schematic:** Included in the `esp32_hardware_design/` folder (Conceptual ESP32 layout).
 - [x] **Simulated Device Data:** Background Rust Simulator securely toggles 15 devices every 30s.
 - [x] **Real-time Web Dashboard:** React UI polls `GET /api/devices` every 30s for live visual updates (no refresh needed).
 - [x] **Discord Bot (`!status`, `!usage`, `!room`):** Built into the backend using `serenity`.

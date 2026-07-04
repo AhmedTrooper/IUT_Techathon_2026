@@ -30,27 +30,31 @@ export function DemoControls({ onUpdate }: { onUpdate: () => void }) {
 			<p className="text-gray-400 mb-3 leading-tight">
 				Temporarily fast-forward time to trigger alerts.
 			</p>
-			
+
 			<div className="grid grid-cols-2 gap-2">
-				<button 
+				<button
+					type="button"
 					onClick={() => setTimeOffset(0)}
 					className={`py-1.5 px-2 rounded-lg font-semibold transition ${offset === 0 ? "bg-white text-black" : "bg-white/10 hover:bg-white/20"}`}
 				>
 					Reset Time
 				</button>
-				<button 
+				<button
+					type="button"
 					onClick={() => setTimeOffset(2)}
 					className={`py-1.5 px-2 rounded-lg font-semibold transition ${offset === 2 ? "bg-red-500 text-white" : "bg-white/10 hover:bg-white/20"}`}
 				>
 					+2 Hours
 				</button>
-				<button 
+				<button
+					type="button"
 					onClick={() => setTimeOffset(5)}
 					className={`py-1.5 px-2 rounded-lg font-semibold transition ${offset === 5 ? "bg-amber-500 text-white" : "bg-white/10 hover:bg-white/20"}`}
 				>
 					+5 Hours
 				</button>
-				<button 
+				<button
+					type="button"
 					onClick={() => setTimeOffset(12)}
 					className={`py-1.5 px-2 rounded-lg font-semibold transition ${offset === 12 ? "bg-purple-500 text-white" : "bg-white/10 hover:bg-white/20"}`}
 				>
