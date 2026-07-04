@@ -35,7 +35,28 @@ fn create_fake_state() -> AppState {
         redis_client,
         memory_devices: Arc::new(RwLock::new(get_default_devices())),
         memory_history: Arc::new(RwLock::new(Vec::new())),
+        demo_time_offset: Arc::new(std::sync::atomic::AtomicI64::new(0)),
     }
+}
+
+#[tokio::test]
+async fn test_demo_time_offset_endpoint() {
+    let state = create_fake_state();
+    let app = build_test_router(state.clone());
+
+    // Test fast-forwarding time by 2 hours
+    let response = app
+        .oneshot(Request::builder()
+            .method("POST")
+            .uri("/api/alerts/demo-time")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"offset_hours": 2}"#))
+            .unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(state.demo_time_offset.load(std::sync::atomic::Ordering::Relaxed), 2);
 }
 
 #[tokio::test]
