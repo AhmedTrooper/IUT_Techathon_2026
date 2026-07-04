@@ -113,21 +113,22 @@ AI_API_KEY=your_gemini_key
 ### 2. Start Services (Docker)
 Ensure Docker is running, then use the Makefile to spin up Postgres and Redis:
 ```bash
-make up
+make docker
 ```
-*(To tear down: `make down`)*
+*(To view logs: `make docker-logs` | To tear down: `make docker-down`)*
 
 ### 3. Run the Backend (Rust)
+You can run the backend manually via Cargo, or use the provided Makefile shortcut:
 ```bash
-cd api
-cargo run --release
+make api
 ```
 *The API will be available at `http://localhost:8080`.*
 
 ### 4. Run the Frontend (React)
+Install the dependencies first, then start the Vite server using Make:
 ```bash
-cd web
-bun install
-bun run dev
+cd web && bun install
+cd ..
+make frontend
 ```
 *The UI will be available at `http://localhost:5173`.*
