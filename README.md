@@ -123,7 +123,7 @@ cargo run --release
 ### 4. Run the Frontend (React)
 ```bash
 cd web
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 *The UI will be available at `http://localhost:5173`.*

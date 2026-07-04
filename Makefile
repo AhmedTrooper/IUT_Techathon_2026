@@ -26,7 +26,7 @@ api-run:
 
 frontend-run:
 	@echo "💻 Starting React frontend on http://localhost:5173..."
-	cd web && npm run dev
+	cd web && bun run dev
 
 docker-up:
 	@echo "🐳 Launching local infrastructure stack (Postgres, Redis, MinIO S3)..."
