@@ -121,7 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         memory_history,
     };
 
-    features::simulator::start_simulator(pool.clone());
+    features::simulator::start_simulator(pool.clone(), state.memory_devices.clone(), state.memory_history.clone());
 
     if let Ok(token) = env::var("DISCORD_TOKEN") {
         features::bot::start_bot(token, state.clone());

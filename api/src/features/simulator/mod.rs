@@ -1,23 +1,37 @@
 use sqlx::PgPool;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
+use std::collections::HashMap;
 use tokio::time::sleep;
 use tracing::{error, info};
+use chrono::Utc;
 
-pub fn start_simulator(pool: PgPool) {
+use crate::features::devices::{Device, DeviceHistory};
+
+pub fn start_simulator(
+    pool: PgPool,
+    memory_devices: Arc<RwLock<HashMap<String, Device>>>,
+    memory_history: Arc<RwLock<Vec<DeviceHistory>>>,
+) {
     tokio::spawn(async move {
         info!("Starting background device simulator...");
         loop {
             let seconds = rand::random::<u64>() % 30 + 30;
             sleep(Duration::from_secs(seconds)).await;
 
-            if let Err(e) = toggle_random_device(&pool).await {
+            if let Err(e) = toggle_random_device(&pool, &memory_devices, &memory_history).await {
                 error!("Simulator error: {}", e);
             }
         }
     });
 }
 
-async fn toggle_random_device(pool: &PgPool) -> Result<(), sqlx::Error> {
+async fn toggle_random_device(
+    pool: &PgPool,
+    memory_devices: &Arc<RwLock<HashMap<String, Device>>>,
+    memory_history: &Arc<RwLock<Vec<DeviceHistory>>>,
+) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
 
     let devices: Vec<String> = sqlx::query_scalar("SELECT id FROM devices")
@@ -63,6 +77,26 @@ async fn toggle_random_device(pool: &PgPool) -> Result<(), sqlx::Error> {
         .await?;
 
         tx.commit().await?;
+
+        // Sync in-memory cache so fail-safe mode stays current
+        let now = Utc::now();
+        {
+            let mut cache = memory_devices.write().await;
+            if let Some(device) = cache.get_mut(device_id) {
+                device.status = updated.0;
+                device.last_changed = now;
+            }
+        }
+        {
+            let mut hist = memory_history.write().await;
+            let next_id = hist.len() as i32 + 1;
+            hist.push(DeviceHistory {
+                id: next_id,
+                device_id: device_id.clone(),
+                status: updated.0,
+                timestamp: now,
+            });
+        }
 
         info!(
             "Simulator toggled device '{}' to {}",
