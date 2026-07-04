@@ -76,6 +76,7 @@ The backend will automatically:
 4. Launch the Proactive Alerting Engine (checking for wasted power every 60s).
 
 ## Features & Endpoints
+> **Note:** CORS is fully permissive — any browser-based application can query the API directly. Non-browser clients (curl, Postman, scripts) are unaffected by CORS as it is a browser-only security mechanism.
 - `GET /api/devices`: Live status of all 15 devices.
 - `POST /api/devices/{id}/toggle`: Mutate a device state (with DB row locking).
 - `GET /api/usage`: Live power meter and today's total estimated kWh (Redis cached).
