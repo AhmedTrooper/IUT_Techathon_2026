@@ -1,91 +1,129 @@
 # 🏢 Office Electricity Monitor - IUT Techathon 2026
 
-**🟢 Live Demo:** [https://iut-techathon-2026.vercel.app/](https://iut-techathon-2026.vercel.app/)
+**🟢 Live Dashboard Demo:** [https://iut-techathon-2026.vercel.app/](https://iut-techathon-2026.vercel.app/)
 
-## 🌟 Overview
-This is the complete, full-stack software and hardware simulation suite for the "Lights, Fans, Discord" office monitoring system. It provides a highly robust backend API, a real-time web dashboard, an interactive Discord Bot powered by AI, and a conceptual hardware schematic. 
+Welcome to the ultimate solution for the "Lights, Fans, Discord" problem. This project provides a highly robust backend API, a real-time React web dashboard, an interactive AI-powered Discord Bot, and a conceptual hardware schematic.
 
-The entire system is strictly built to satisfy every rule, requirement, and bonus point of the Hackathon.
+---
 
-## 🏗️ System Architecture & Data Flow (Push vs. Pull)
-The system was designed with a strict **Single Source of Truth** architecture to ensure the Discord bot and Web Dashboard always show the exact same reality, but they use different data acquisition strategies:
+## 🏆 Hackathon Deliverables Checklist
+We have meticulously fulfilled every requirement and bonus point in the rulebook:
+- [x] **High-Level System Diagram:** Included in repo as `system_diagram.pdf`.
+- [x] **Hardware Schematic:** Included in the `wokwi/` folder (Conceptual ESP32 layout).
+- [x] **Simulated Device Data:** Background Rust Simulator securely toggles 15 devices every 30s.
+- [x] **Real-time Web Dashboard:** React UI polls `GET /api/devices` every 30s for live visual updates (no refresh needed).
+- [x] **Discord Bot (`!status`, `!usage`, `!room`):** Built into the backend using `serenity`.
+- [x] **AI Humanized Responses:** Integrates `rig` (supporting Gemini/OpenAI/Claude) to format raw JSON into conversational messages for the boss.
+- [x] **Bonus (Visual Layout):** Interactive 2D Floor Plan with glowing animations.
+- [x] **Bonus (Proactive Alerts):** Discord Bot pushes autonomous alerts for After-Hours & 2-Hour Waste rules directly to `#office-alerts`.
 
-1. **The Core (Rust Backend & PostgreSQL):** The Axum API manages the PostgreSQL database. Every time a device state changes, it is locked, updated, and timestamped in Postgres.
-2. **The Hardware Simulator (Background Task):** A background thread safely toggles random devices every 30-60 seconds to simulate a live office. 
-3. **The Web Dashboard (PULL):** The beautiful, responsive React/Vite UI uses an HTTP polling mechanism. Every 30 seconds, it reaches out to the backend (`GET /api/devices`) to PULL the latest data and map it onto the 2D floor plan.
-4. **The Discord Bot (PUSH):** The Discord bot is a background thread running natively *inside* the Rust API. Because it has direct memory access to the database cache, it doesn't need to make HTTP requests. It checks the data internally every 5 seconds, and if it detects an anomaly, it PUSHES a warning directly to Discord's servers.
-5. **The Unified Alerts Engine:** Both the dashboard and the Discord bot share a centralized alerts engine that constantly checks for anomalies (e.g., 2-hour waste, after-hours usage).
+---
 
-*(A high-level visual system diagram is included in this repository as `system_diagram.pdf`)*
+## 🧑‍⚖️ Note to Judges: How to Test the Anomalies
+Because the rules require triggering alerts for **"Devices left on over 2 hours"** and **"Devices on after 5 PM"**, we built a **Time-Travel Debugger** directly into the frontend (bottom-left corner) so you don't have to wait to grade our project.
 
-## 🚀 Key Features
-*   **Fail-Safe Degradation:** If the PostgreSQL database or Redis cache crashes, the entire backend instantly falls back to an internal `tokio::RwLock` memory cache. The dashboard and bot will never go offline.
-*   **Time-Travel Debugging:** A built-in UI feature that allows judges to manually fast-forward the server's internal clock to demonstrate anomaly alerts (Office Hours rule, 2-Hour rule) without waiting. Clicking the **Reset Time** button instantly clears the offset, snapping the server back to real-world time and clearing the alerts.
-*   **AI Humanization:** The Discord bot uses the `rig` crate to translate JSON device data into warm, friendly messages.
-*   **Permissive CORS:** The API is accessible from any web frontend or automated testing system.
+**How to test the 2-Hour Rule:**
+1. Go to the [Live Dashboard](https://iut-techathon-2026.vercel.app/).
+2. Turn **ON** all devices in a single room (e.g., Work Room 1).
+3. Click the **+2 Hours** button in the Time Travel panel. 
+4. *Result:* The backend instantly fast-forwards its clock by 2 hours. The dashboard will flash red, and the Discord bot will push a Critical Alert.
 
-## 🛠️ Setup Instructions
+**How to test the Office Hours Rule (9 AM - 5 PM):**
+1. Look at your current local time. 
+2. Use the Time Travel buttons to push the clock past 5:00 PM (17:00). *(e.g., If it is 1:00 PM, click **+5 Hours** to simulate 6:00 PM).*
+3. *Result:* If any device is ON, the system will instantly detect the After-Hours anomaly and trigger a warning.
 
-### 1. Prerequisites
-*   **Rust Toolchain:** (v1.75+)
-*   **Node.js & Bun/npm:** For the frontend.
-*   **PostgreSQL & Redis:** Running locally or via Docker.
+*Click "Reset Time" to snap the server back to real-world time.*
 
-### 2. Environment Variables
-Create a `.env` file in the project root:
-```env
-# Database & Cache
-DATABASE_URL=postgresql://user:pass@localhost:5432/iut_techathon_2026_db
-REDIS_URL=redis://localhost:6379
+---
 
-# S3 Storage (For Reports)
-S3_ENDPOINT=http://localhost:9000
-S3_ACCESS_KEY=admin
-S3_SECRET_KEY=supersecretpassword
-S3_BUCKET=iut-techathon-2026-bucket
+## 🛠️ Tech Stack
+**Frontend:**
+- **React + Vite:** Lightning-fast UI rendering.
+- **Tailwind CSS:** Custom animations, glowing states, and responsive design.
+- **Axios & TanStack:** Robust API polling and state management.
 
-# Discord Integration
-DISCORD_TOKEN=your_discord_bot_token
-DISCORD_ALERT_CHANNEL_ID=your_discord_channel_id
+**Backend:**
+- **Rust (Axum):** Extremely fast, memory-safe API routing.
+- **PostgreSQL (SQLx):** Persistent, transactional source of truth for device states.
+- **Redis:** High-speed caching for rate-limiting and daily kWh calculations.
+- **Serenity & Rig:** WebSocket Discord integration and LLM prompt chaining.
 
-# AI Humanization (Options: GEMINI, ANTHROPIC, OPENAI, GROQ, OPENROUTER, XAI)
-AI_PROVIDER=GEMINI
-AI_MODEL=gemini-1.5-flash
-AI_API_KEY=your_api_key
+---
+
+## 🧠 System Architecture (Push vs. Pull)
+Our system uses a strict **Single Source of Truth** architecture:
+1. **The Core:** Every device toggle locks a PostgreSQL row, updates the status, and records a timestamp. 
+2. **The Web Dashboard (PULL):** The React UI uses an HTTP polling mechanism (`GET /api/devices`) every 30 seconds to *pull* the latest data and map it visually.
+3. **The Discord Bot (PUSH):** The bot runs natively *inside* the Rust API. It has direct memory access to the database cache (no HTTP requests needed). It checks the data internally every 5 seconds, and if it detects an anomaly, it *pushes* a warning to Discord's servers.
+
+---
+
+## 📊 Data Model
+Our PostgreSQL database is designed for speed and historical tracking:
+
+```sql
+-- The Current Live State
+CREATE TABLE devices (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    room VARCHAR(50) NOT NULL,       -- e.g., 'work_room_1'
+    device_type VARCHAR(20) NOT NULL, -- 'fan' or 'light'
+    status BOOLEAN NOT NULL DEFAULT false,
+    power_consumption INTEGER NOT NULL, -- Wattage
+    last_changed TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Immutable Append-Only Ledger for Power Analytics
+CREATE TABLE device_history (
+    id SERIAL PRIMARY KEY,
+    device_id VARCHAR(50) REFERENCES devices(id),
+    status BOOLEAN NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ```
 
-### 3. Running the Backend (API & Bot)
-The Rust backend automatically seeds the database with the 15 required devices on startup.
+---
+
+## ⚡ Fail-Safe Degradation
+If the PostgreSQL database or Redis cache crashes during the demo, the backend instantly falls back to an internal `tokio::RwLock` memory cache. **The dashboard and bot will never go offline.** The API intercepts the SQL connection failure, serves the memory cache, and logs the degradation seamlessly.
+
+---
+
+## 🚀 Local Development Setup
+
+We have provided a fully containerized setup using Docker and Makefiles for an effortless developer experience.
+
+### 1. Environment Variables
+Create a `.env` file in the root directory (see `.env.example`):
+```env
+DATABASE_URL=postgresql://user:pass@localhost:5432/iut_techathon_2026_db
+REDIS_URL=redis://localhost:6379
+DISCORD_TOKEN=your_bot_token
+DISCORD_ALERT_CHANNEL_ID=your_channel_id
+AI_PROVIDER=GEMINI
+AI_MODEL=gemini-1.5-flash
+AI_API_KEY=your_gemini_key
+```
+
+### 2. Start Services (Docker)
+Ensure Docker is running, then use the Makefile to spin up Postgres and Redis:
+```bash
+make up
+```
+*(To tear down: `make down`)*
+
+### 3. Run the Backend (Rust)
 ```bash
 cd api
 cargo run --release
 ```
-*This starts the API on `http://localhost:8080`, boots the Discord bot, and launches the hardware simulator.*
+*The API will be available at `http://localhost:8080`.*
 
-### 4. Running the Web Dashboard
+### 4. Run the Frontend (React)
 ```bash
 cd web
 npm install
 npm run dev
 ```
-*This starts the Vite React frontend on `http://localhost:5173`.*
-
-## 🔌 Hardware Schematic (Wokwi)
-Inside the `wokwi/` directory, you will find `diagram.json` and `sketch.ino`. 
-
-As requested by the rulebook, this is a **representative conceptual circuit** for a single room. It demonstrates how an ESP32 microcontroller is wired to read 5 slide switches and operate 3 LEDs (Lights) and 2 DC Motors (Fans) using pins 15, 2, 4, 16, and 17. 
-
-The `sketch.ino` C++ code reads these pins and formats a JSON payload. In a physical implementation, the ESP32 would simply send this JSON payload to our Rust API via an HTTP POST request. Because this is a simulation, our backend handles the live data generation internally.
-
-## 📡 API Endpoints
-*   `GET /api/devices`: Live status of all 15 devices.
-*   `POST /api/devices/{id}/toggle`: Safely toggle a device state.
-*   `GET /api/usage`: Live power meter and today's total estimated kWh.
-*   `GET /api/alerts`: Active anomaly detection (after-hours usage, 2-hour continuous waste).
-*   `POST /api/alerts/demo-time`: (Internal/Debug) Fast-forward the server clock to trigger rules.
-
-## 🤖 Discord Bot Commands
-*   `!status`: Shows the overall summary of all 3 rooms.
-*   `!room <name>`: Shows detailed status for a specific room (e.g. `!room work1`).
-*   `!usage`: Shows the current live wattage and daily kWh estimate.
-*   `!export`: Generates a CSV report of device history.
+*The UI will be available at `http://localhost:5173`.*
