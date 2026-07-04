@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertsPanel } from "../features/dashboard/components/AlertsPanel";
 import { DevicePanel } from "../features/dashboard/components/DevicePanel";
-import { PowerMeter } from "../features/dashboard/components/PowerMeter";
 import { OfficeLayout } from "../features/dashboard/components/OfficeLayout";
+import { PowerMeter } from "../features/dashboard/components/PowerMeter";
 import { useDashboardData } from "../features/dashboard/hooks/useDashboardData";
 
 export const Route = createFileRoute("/")({
@@ -39,7 +39,8 @@ function Home() {
 					</h1>
 					<p className="text-sm text-[var(--sea-ink-soft)] mt-1.5 max-w-2xl">
 						Real-time status, consumption levels, and anomalies breakdown across
-						the building. Devices can be manually toggled via the map or the list.
+						the building. Devices can be manually toggled via the map or the
+						list.
 					</p>
 				</div>
 
