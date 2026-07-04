@@ -3,6 +3,7 @@ import { AlertsPanel } from "../features/dashboard/components/AlertsPanel";
 import { DevicePanel } from "../features/dashboard/components/DevicePanel";
 import { OfficeLayout } from "../features/dashboard/components/OfficeLayout";
 import { PowerMeter } from "../features/dashboard/components/PowerMeter";
+import { DemoControls } from "../features/dashboard/components/DemoControls";
 import { useDashboardData } from "../features/dashboard/hooks/useDashboardData";
 
 export const Route = createFileRoute("/")({
@@ -10,7 +11,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-	const { devices, usage, alerts, error, loading, toggleDevice } =
+	const { devices, usage, alerts, error, loading, toggleDevice, refetch } =
 		useDashboardData();
 
 	if (loading) {
@@ -74,6 +75,8 @@ function Home() {
 					<AlertsPanel alerts={alerts} />
 				</div>
 			</div>
+			
+			<DemoControls onUpdate={refetch} />
 		</main>
 	);
 }

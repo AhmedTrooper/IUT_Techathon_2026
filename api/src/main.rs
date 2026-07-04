@@ -18,6 +18,7 @@ pub struct AppState {
     pub redis_client: redis::Client,
     pub memory_devices: std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, features::devices::Device>>>,
     pub memory_history: std::sync::Arc<tokio::sync::RwLock<Vec<features::devices::DeviceHistory>>>,
+    pub demo_time_offset: std::sync::Arc<std::sync::atomic::AtomicI64>,
 }
 
 #[tokio::main]
@@ -119,6 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         redis_client,
         memory_devices,
         memory_history,
+        demo_time_offset: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
     };
 
     features::simulator::start_simulator(pool.clone(), state.memory_devices.clone(), state.memory_history.clone());

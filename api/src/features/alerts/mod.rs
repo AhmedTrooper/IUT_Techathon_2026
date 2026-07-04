@@ -1,13 +1,14 @@
 use axum::{
     extract::State,
     http::StatusCode,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, FixedOffset, Timelike, Utc};
 use serde::Serialize;
 use tracing::error;
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 
 use crate::AppState;
 use crate::features::devices::Device;
@@ -26,7 +27,9 @@ pub struct AlertsResponse {
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/alerts", get(get_alerts))
+    Router::new()
+        .route("/alerts", get(get_alerts))
+        .route("/alerts/demo-time", post(set_demo_time))
 }
 
 pub async fn check_alerts(state: &AppState) -> Vec<Alert> {
@@ -42,7 +45,8 @@ pub async fn check_alerts(state: &AppState) -> Vec<Alert> {
     };
 
     let mut alerts = Vec::new();
-    let now_utc = Utc::now();
+    let offset_hours = state.demo_time_offset.load(Ordering::Relaxed);
+    let now_utc = Utc::now() + chrono::Duration::hours(offset_hours);
     let dhaka_offset = FixedOffset::east_opt(6 * 3600).unwrap();
     let now_dhaka = now_utc.with_timezone(&dhaka_offset);
     let hour = now_dhaka.hour();
@@ -125,4 +129,17 @@ pub async fn check_alerts(state: &AppState) -> Vec<Alert> {
 async fn get_alerts(State(state): State<AppState>) -> Result<Json<AlertsResponse>, StatusCode> {
     let alerts = check_alerts(&state).await;
     Ok(Json(AlertsResponse { alerts }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct DemoTimeRequest {
+    pub offset_hours: i64,
+}
+
+async fn set_demo_time(
+    State(state): State<AppState>,
+    Json(payload): Json<DemoTimeRequest>,
+) -> Result<StatusCode, StatusCode> {
+    state.demo_time_offset.store(payload.offset_hours, Ordering::Relaxed);
+    Ok(StatusCode::OK)
 }
