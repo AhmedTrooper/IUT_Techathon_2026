@@ -1,6 +1,10 @@
 # 🏢 Office Electricity Monitor - IUT Techathon 2026
 
-**🟢 Live Dashboard Demo:** [https://iut-techathon-2026.vercel.app/](https://iut-techathon-2026.vercel.app/)
+**🟢 Live Dashboard Demo:** [https://iut-techathon-2026.vercel.app/](https://iut-techathon-2026.vercel.app/)  
+**📄 Full Technical Report:** [report.tex](./report.tex) (Compile to PDF for the full 5-page architectural breakdown)
+
+![Dashboard Overview](assets/image1.png)
+![Time Travel Alerts](assets/image2_demo_alerts.png)
 
 Welcome to the ultimate solution for the "Lights, Fans, Discord" problem. This project provides a highly robust backend API, a real-time React web dashboard, an interactive AI-powered Discord Bot, and a conceptual hardware schematic.
 
