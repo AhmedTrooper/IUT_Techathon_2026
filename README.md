@@ -96,6 +96,35 @@ If the PostgreSQL database or Redis cache crashes during the demo, the backend i
 
 ---
 
+## 🧪 API Endpoints & Automated Testing
+
+### REST Endpoints
+The backend provides a fully permissive CORS policy, allowing any client to interface with the office state:
+- `GET /api/devices`: Returns the live status of all 15 devices.
+- `POST /api/devices/{id}/toggle`: Safely toggles a device state with row-level locking.
+- `GET /api/usage`: Returns the live power meter and today's total estimated kWh.
+- `GET /api/alerts`: Returns active anomalies (after-hours usage, 2-hour continuous waste).
+- `POST /api/alerts/demo-time`: Fast-forwards the server clock to test time-based rules.
+
+### Test Suites
+This repository includes comprehensive automated testing for both the frontend and backend architectures:
+
+**1. Backend Graceful Degradation Tests (Rust)**
+We aggressively test our Fail-Safe mechanisms by forcefully injecting broken/fake database connections into the Axum router and strictly verifying that every critical endpoint intercepts the failure and returns accurate data from the in-memory cache.
+```bash
+cd api
+cargo test
+```
+
+**2. Frontend Unit Tests (React/Vitest)**
+The React dashboard includes mocked unit tests (using Vitest and React Testing Library) to validate the Time Travel UI and rendering logic.
+```bash
+cd web
+bunx vitest run
+```
+
+---
+
 ## 🚀 Local Development Setup
 
 We have provided a fully containerized setup using Docker and Makefiles for an effortless developer experience.
