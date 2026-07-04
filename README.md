@@ -1,6 +1,7 @@
 # 🏢 Office Electricity Monitor - IUT Techathon 2026
 
 **🟢 Live Dashboard Demo:** [https://iut-techathon-2026.vercel.app/](https://iut-techathon-2026.vercel.app/)  
+**⚙️ Live Backend API:** [https://iuttechathon2026-production.up.railway.app/health](https://iuttechathon2026-production.up.railway.app/health)  
 **📄 Full Technical Report:** [report.tex](./report.tex) (Compile to PDF for the full 5-page architectural breakdown)
 
 ![Dashboard Overview](assets/image1.png)
