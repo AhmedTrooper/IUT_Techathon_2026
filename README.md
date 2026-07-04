@@ -19,25 +19,26 @@ The system consists of three main components:
 - **Redis:** A running Redis server for rate-limiting and query caching.
 
 ### 2. Environment Variables
-Create a `.env` file in the `api/` directory with the following keys:
+Create a `.env` file in the project root with the following keys (see `.env.example`):
 ```env
 # Database & Cache
-DATABASE_URL=postgres://user:pass@localhost:5432/techathon
-REDIS_URL=redis://127.0.0.1/
+DATABASE_URL=postgresql://user:pass@localhost:5432/iut_techathon_2026_db
+REDIS_URL=redis://localhost:6379
+
+# S3 / MinIO Storage
+S3_ENDPOINT=http://localhost:9000
+S3_ACCESS_KEY=admin
+S3_SECRET_KEY=supersecretpassword
+S3_BUCKET=iut-techathon-2026-bucket
 
 # Discord Bot
 DISCORD_TOKEN=your_discord_bot_token
-DISCORD_ALERT_CHANNEL_ID=your_discord_channel_id_for_alerts
+DISCORD_ALERT_CHANNEL_ID=your_discord_channel_id
 
-# AI Humanization (Choose One)
-GEMINI_API_KEY=your_gemini_key
-# OPENAI_API_KEY=your_openai_key
-
-# AWS S3 (For Reports & Diagram Storage)
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_REGION=us-east-1
-S3_BUCKET_NAME=your_bucket_name
+# AI Humanization (Providers: GEMINI, ANTHROPIC, OPENAI, GROQ, OPENROUTER, XAI)
+AI_PROVIDER=GEMINI
+AI_MODEL=gemini-1.5-flash
+AI_API_KEY=your_api_key
 ```
 
 ### 3. Database Initialization
