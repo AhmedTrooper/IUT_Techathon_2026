@@ -415,36 +415,54 @@ async fn humanize_response(state: &AppState, raw_data: &str) -> String {
         }
     }
 
-    let response = if env::var("GEMINI_API_KEY").is_ok() {
-        if let Ok(client) = rig::providers::gemini::Client::from_env() {
-            let agent = client
-                .agent("gemini-1.5-flash")
-                .preamble("You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.")
-                .build();
-            if let Ok(resp) = agent.prompt(raw_data).await {
-                resp
-            } else {
-                format!("Here is the status summary:\n\n{}", raw_data)
-            }
-        } else {
-            format!("Here is the status summary:\n\n{}", raw_data)
-        }
-    } else if env::var("OPENAI_API_KEY").is_ok() {
-        if let Ok(client) = rig::providers::openai::Client::from_env() {
-            let agent = client
-                .agent("gpt-4o-mini")
-                .preamble("You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.")
-                .build();
-            if let Ok(resp) = agent.prompt(raw_data).await {
-                resp
-            } else {
-                format!("Here is the status summary:\n\n{}", raw_data)
-            }
-        } else {
-            format!("Here is the status summary:\n\n{}", raw_data)
-        }
-    } else {
+    let preamble = "You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.";
+    
+    let provider_env = env::var("AI_PROVIDER").unwrap_or_default().to_uppercase();
+    let model_env = env::var("AI_MODEL").unwrap_or_default();
+    let api_key = env::var("AI_API_KEY").unwrap_or_default();
+
+    let response = if api_key.is_empty() || model_env.is_empty() {
         format!("Here is the status summary:\n\n{}", raw_data)
+    } else {
+        match provider_env.as_str() {
+            "ANTHROPIC" => {
+                if let Ok(client) = rig::providers::anthropic::Client::new(&api_key) {
+                    let agent = client.agent(&model_env).preamble(preamble).build();
+                    if let Ok(resp) = agent.prompt(raw_data).await { resp } else { format!("Here is the status summary:\n\n{}", raw_data) }
+                } else { format!("Here is the status summary:\n\n{}", raw_data) }
+            }
+            "OPENROUTER" => {
+                if let Ok(client) = rig::providers::openrouter::Client::new(&api_key) {
+                    let agent = client.agent(&model_env).preamble(preamble).build();
+                    if let Ok(resp) = agent.prompt(raw_data).await { resp } else { format!("Here is the status summary:\n\n{}", raw_data) }
+                } else { format!("Here is the status summary:\n\n{}", raw_data) }
+            }
+            "XAI" | "GROK" => {
+                if let Ok(client) = rig::providers::xai::Client::new(&api_key) {
+                    let agent = client.agent(&model_env).preamble(preamble).build();
+                    if let Ok(resp) = agent.prompt(raw_data).await { resp } else { format!("Here is the status summary:\n\n{}", raw_data) }
+                } else { format!("Here is the status summary:\n\n{}", raw_data) }
+            }
+            "GEMINI" => {
+                if let Ok(client) = rig::providers::gemini::Client::new(&api_key) {
+                    let agent = client.agent(&model_env).preamble(preamble).build();
+                    if let Ok(resp) = agent.prompt(raw_data).await { resp } else { format!("Here is the status summary:\n\n{}", raw_data) }
+                } else { format!("Here is the status summary:\n\n{}", raw_data) }
+            }
+            "OPENAI" => {
+                if let Ok(client) = rig::providers::openai::Client::new(&api_key) {
+                    let agent = client.agent(&model_env).preamble(preamble).build();
+                    if let Ok(resp) = agent.prompt(raw_data).await { resp } else { format!("Here is the status summary:\n\n{}", raw_data) }
+                } else { format!("Here is the status summary:\n\n{}", raw_data) }
+            }
+            "GROQ" => {
+                if let Ok(client) = rig::providers::groq::Client::new(&api_key) {
+                    let agent = client.agent(&model_env).preamble(preamble).build();
+                    if let Ok(resp) = agent.prompt(raw_data).await { resp } else { format!("Here is the status summary:\n\n{}", raw_data) }
+                } else { format!("Here is the status summary:\n\n{}", raw_data) }
+            }
+            _ => format!("Here is the status summary:\n\n{}", raw_data)
+        }
     };
 
     if let Ok(mut con) = state.redis_client.get_multiplexed_async_connection().await {
