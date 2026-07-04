@@ -417,7 +417,7 @@ async fn humanize_response(state: &AppState, raw_data: &str) -> String {
         }
     }
 
-    let preamble = "You are a friendly office assistant. Translate the raw office device status/usage data into a warm, natural, and friendly message for the boss. Keep it concise, friendly, and structured. Avoid robotic data dumps.";
+    let preamble = "You are a friendly, conversational office assistant reporting directly to the boss. When given raw office device status or usage data, translate it into a warm, natural message. Start by giving the boss a sense of relief or helpful context (e.g., 'Everything looks great today, boss!' or 'A few things are left on, but nothing to worry about!'). Then smoothly present the actual data in a clean, easy-to-read way. End with a polite, helpful sign-off. Do not sound robotic.";
     
     let provider_env = env::var("AI_PROVIDER").unwrap_or_default().to_uppercase();
     let model_env = env::var("AI_MODEL").unwrap_or_default();

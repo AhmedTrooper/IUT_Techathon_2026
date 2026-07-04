@@ -1,5 +1,7 @@
 # 🏢 Office Electricity Monitor - IUT Techathon 2026
 
+**🟢 Live Demo:** [https://iut-techathon-2026.vercel.app/](https://iut-techathon-2026.vercel.app/)
+
 ## 🌟 Overview
 This is the complete, full-stack software and hardware simulation suite for the "Lights, Fans, Discord" office monitoring system. It provides a highly robust backend API, a real-time web dashboard, an interactive Discord Bot powered by AI, and a conceptual hardware schematic. 
 
