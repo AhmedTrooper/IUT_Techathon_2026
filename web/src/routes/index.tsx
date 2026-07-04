@@ -10,7 +10,8 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-	const { devices, usage, error, loading, toggleDevice } = useDashboardData();
+	const { devices, usage, alerts, error, loading, toggleDevice } =
+		useDashboardData();
 
 	if (loading) {
 		return (
@@ -70,7 +71,7 @@ function Home() {
 						System Operations
 					</h2>
 					<PowerMeter usage={usage} />
-					<AlertsPanel devices={devices} />
+					<AlertsPanel alerts={alerts} />
 				</div>
 			</div>
 		</main>

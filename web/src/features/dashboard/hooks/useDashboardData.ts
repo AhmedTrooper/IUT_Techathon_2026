@@ -1,30 +1,41 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Device, UsageResponse } from "../types";
 
+export interface Alert {
+	id: string;
+	timestamp: string;
+	message: string;
+	level: string;
+}
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
 
 export function useDashboardData() {
 	const [devices, setDevices] = useState<Device[]>([]);
 	const [usage, setUsage] = useState<UsageResponse | null>(null);
+	const [alerts, setAlerts] = useState<Alert[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState<boolean>(true);
 
 	const fetchDashboardData = useCallback(async () => {
 		try {
-			const [devicesRes, usageRes] = await Promise.all([
+			const [devicesRes, usageRes, alertsRes] = await Promise.all([
 				fetch(`${API_BASE}/devices`),
 				fetch(`${API_BASE}/usage`),
+				fetch(`${API_BASE}/alerts`),
 			]);
 
-			if (!devicesRes.ok || !usageRes.ok) {
+			if (!devicesRes.ok || !usageRes.ok || !alertsRes.ok) {
 				throw new Error("Failed to fetch dashboard data");
 			}
 
 			const devicesData = await devicesRes.json();
 			const usageData = await usageRes.json();
+			const alertsData = await alertsRes.json();
 
 			setDevices(devicesData);
 			setUsage(usageData);
+			setAlerts(alertsData.alerts ?? []);
 			setError(null);
 		} catch (err) {
 			console.error(err);
@@ -76,6 +87,7 @@ export function useDashboardData() {
 	return {
 		devices,
 		usage,
+		alerts,
 		error,
 		loading,
 		toggleDevice,
