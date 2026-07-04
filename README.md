@@ -26,6 +26,20 @@ We have meticulously fulfilled every requirement and bonus point in the rulebook
 
 ---
 
+## 🤖 Discord Bot Commands
+You can interact with the office system directly through Discord. The bot supports natural language humanization for responses.
+- `!status` - Get an overview of all active devices in the building.
+- `!usage` - Check the live total wattage and daily kWh estimate.
+- `!export` - Generates a CSV history report on AWS S3 and returns a download link.
+- `!room <room_name>` - Get detailed device status for a specific room. 
+  - **Allowed Room Aliases:**
+    - Drawing Room: `drawing`, `drawingroom`
+    - Work Room 1: `work1`, `workroom1`, `wr1`
+    - Work Room 2: `work2`, `workroom2`, `wr2`
+  - *Example:* `!room work1`
+
+---
+
 ## 🧑‍⚖️ Note to Judges: How to Test the Anomalies
 Because the rules require triggering alerts for **"Devices left on over 2 hours"** and **"Devices on after 5 PM"**, we built a **Time-Travel Debugger** directly into the frontend (bottom-left corner) so you don't have to wait to grade our project.
 
@@ -36,9 +50,10 @@ Because the rules require triggering alerts for **"Devices left on over 2 hours"
 4. *Result:* The backend instantly fast-forwards its clock by 2 hours. The dashboard will flash red, and the Discord bot will push a Critical Alert.
 
 **How to test the Office Hours Rule (9 AM - 5 PM):**
-1. Look at your current local time. 
-2. Use the Time Travel buttons to push the clock past 5:00 PM (17:00). *(e.g., If it is 1:00 PM, click **+5 Hours** to simulate 6:00 PM).*
-3. *Result:* If any device is ON, the system will instantly detect the After-Hours anomaly and trigger a warning.
+1. Look at your current local time. The Discord bot relies on a state transition (from *Inside Office Hours* to *After Hours*) to trigger a push alert and avoid spamming.
+2. If it is already past 5:00 PM in real life, first click **-2 Hours** or **-5 Hours** in the Time Travel panel to travel backward *into* the working day. Wait 5 seconds for the bot to clear its memory tracker.
+3. Then, click **+2 Hours** or **+5 Hours** to push the clock past 5:00 PM (17:00) again to simulate closing time.
+4. *Result:* As the system crosses the 5 PM boundary with devices still ON, it will instantly detect the After-Hours anomaly and trigger a fresh warning to both the dashboard and Discord bot!
 
 *Click "Reset Time" to snap the server back to real-world time.*
 
@@ -63,7 +78,7 @@ Because the rules require triggering alerts for **"Devices left on over 2 hours"
 Our system uses a strict **Single Source of Truth** architecture:
 1. **The Core:** Every device toggle locks a PostgreSQL row, updates the status, and records a timestamp. 
 2. **The Web Dashboard (PULL):** The React UI uses an HTTP polling mechanism (`GET /api/devices`) every 30 seconds to *pull* the latest data and map it visually.
-3. **The Discord Bot (PUSH):** The bot runs natively *inside* the Rust API. It has direct memory access to the database cache (no HTTP requests needed). It checks the data internally every 5 seconds, and if it detects an anomaly, it *pushes* a warning to Discord's servers.
+3. **The Discord Bot (PUSH):** 🚨 **Judge Highlight:** The Discord bot is NOT a separate external script polling our API! It runs natively as a background thread *inside* the Rust Axum backend. Because it is built-in, it has direct memory access to the shared `AppState` cache (no HTTP requests needed). It silently monitors the data internally every 5 seconds, and if it detects an anomaly, it *proactively pushes* the AI-generated warning directly to Discord's servers.
 
 ---
 
