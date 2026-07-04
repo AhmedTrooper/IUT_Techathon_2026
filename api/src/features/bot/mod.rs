@@ -12,7 +12,6 @@ use tracing::{error, info};
 use chrono::{Utc, Timelike, DateTime};
 use std::collections::HashSet;
 use tokio::sync::Mutex;
-use rig::client::ProviderClient;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use redis::AsyncCommands;
@@ -264,7 +263,9 @@ async fn get_raw_room_status(state: &AppState, query: &str) -> Result<String, sq
 
     let mut response = format!("Status for {}:\n", room_name);
     for d in devices {
-        response.push_str(&format!("- {}: {}\n", d.name, if d.status { "ON" } else { "OFF" }));
+        let dhaka_offset = chrono::FixedOffset::east_opt(6 * 3600).unwrap();
+        let changed_dhaka = d.last_changed.with_timezone(&dhaka_offset);
+        response.push_str(&format!("- {}: {} (since {})\n", d.name, if d.status { "ON" } else { "OFF" }, changed_dhaka.format("%I:%M %p")));
     }
 
     Ok(response)
