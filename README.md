@@ -93,6 +93,148 @@ CREATE TABLE device_history (
 
 ---
 
+## ⚙️ Backend Implementation Tasks & Code Highlights
+
+Below is a detailed breakdown of the major backend tasks we accomplished, how we engineered them, and the actual code powering them.
+
+### Task 1: Background Device Simulator
+**What we did:** We needed a way to simulate a live office environment where devices turn on and off automatically without manual intervention.
+**How we did it:** We spawned a detached asynchronous `tokio` task on server startup. Every 30 to 60 seconds, it randomly selects a device, queries its current status from PostgreSQL using a row-level lock (`FOR UPDATE`), toggles the status, logs the change to the `device_history` table, and syncs the in-memory cache.
+**Code:**
+```rust
+pub fn start_simulator(
+    pool: PgPool,
+    memory_devices: Arc<RwLock<HashMap<String, Device>>>,
+    memory_history: Arc<RwLock<Vec<DeviceHistory>>>,
+) {
+    tokio::spawn(async move {
+        info!("Starting background device simulator...");
+        loop {
+            let seconds = rand::random::<u64>() % 30 + 30;
+            sleep(Duration::from_secs(seconds)).await;
+
+            if let Err(e) = toggle_random_device(&pool, &memory_devices, &memory_history).await {
+                error!("Simulator error: {}", e);
+            }
+        }
+    });
+}
+```
+
+### Task 2: AI-Powered Discord Bot & Proactive Alerts (Push Mechanism)
+**What we did:** We built a Discord bot that listens to commands (`!status`, `!usage`) and proactively sends warnings to an `#office-alerts` channel if anomalies are detected (e.g., devices left on after 5 PM, or on for over 2 hours).
+**How we did it:** The bot runs natively inside the Axum server using the `serenity` crate. It polls the application state every 5 seconds without making HTTP requests. It uses the `rig` library to pass raw JSON data to an LLM (Gemini, OpenAI, etc.) to humanize the response before sending it to the boss.
+**Code:**
+```rust
+async fn check_and_send_alerts(
+    state: &AppState,
+    channel_id: ChannelId,
+    http: &Arc<serenity::http::Http>,
+    sent_alerts: &Arc<Mutex<HashSet<String>>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let pool = &state.pool;
+    // Fast-forward time support for judging
+    let offset_hours = state.demo_time_offset.load(std::sync::atomic::Ordering::Relaxed);
+    let now = Utc::now() + chrono::Duration::hours(offset_hours);
+    
+    // ... [Database Fetch Logic] ...
+
+    let hour = now_dhaka.hour();
+    let is_after_hours = hour < 9 || hour >= 17;
+
+    if is_after_hours {
+        // Find active devices and push an alert
+        if !active_devices.is_empty() {
+            let alert_msg = format!(
+                "⚠️ **After-Hours Power Alert!**\nThe following devices are still active at {:02}:{:02} Dhaka time:\n{}\nDid someone forget to turn them off?",
+                hour, now_dhaka.minute(), list
+            );
+            
+            let humanized = humanize_response(state, &alert_msg).await;
+            channel_id.say(http, humanized).await?;
+        }
+    }
+    // ... [2-Hour Continuous Use Check Logic] ...
+    Ok(())
+}
+```
+
+### Task 3: Data Export Pipeline to S3
+**What we did:** We implemented a data export feature allowing users to download the historical power usage of the office as a CSV file.
+**How we did it:** When the `!export` command is triggered (or via API), the backend queries the `device_history` table, dynamically generates a CSV string in memory, uploads the byte stream directly to an S3/MinIO bucket using the `aws-sdk-s3` crate, and generates a pre-signed URL valid for 15 minutes. The URL is then cached in Redis.
+**Code:**
+```rust
+async fn handle_export(state: &AppState) -> Result<String, Box<dyn std::error::Error>> {
+    // ... [Query Database & Build CSV String] ...
+
+    let file_key = format!("reports/power_report_{}.csv", Utc::now().timestamp());
+
+    state.s3_client
+        .put_object()
+        .bucket(&state.s3_bucket)
+        .key(&file_key)
+        .body(aws_sdk_s3::primitives::ByteStream::from(csv_content.into_bytes()))
+        .content_type("text/csv")
+        .send()
+        .await?;
+
+    let presigned = state.s3_client
+        .get_object()
+        .bucket(&state.s3_bucket)
+        .key(&file_key)
+        .presigned(aws_sdk_s3::presigning::PresigningConfig::expires_in(Duration::from_secs(900))?)
+        .await?;
+
+    Ok(presigned.uri().to_string())
+}
+```
+
+### Task 4: Fail-Safe Degradation and In-Memory Fallback
+**What we did:** Ensuring 100% uptime even if the main PostgreSQL database goes down.
+**How we did it:** When the application starts, it loads the initial database state into a thread-safe `tokio::sync::RwLock` cache. When an endpoint queries data, it first attempts to hit the database. If the database connection fails, it catches the error and silently reads from the memory cache instead.
+**Code:**
+```rust
+async fn get_raw_status(state: &AppState) -> Result<String, sqlx::Error> {
+    let pool = &state.pool;
+    let devices_result = sqlx::query_as::<_, Device>("SELECT * FROM devices")
+        .fetch_all(pool)
+        .await;
+
+    let devices = match devices_result {
+        Ok(devs) => devs,
+        Err(e) => {
+            error!("Database offline, bot using in-memory cache for status: {}", e);
+            let cache = state.memory_devices.read().await;
+            cache.values().cloned().collect() // Fallback to memory
+        }
+    };
+    
+    // ... [Formatting Logic] ...
+}
+```
+
+### Task 5: Time-Travel Debugging API
+**What we did:** Created a way for judges to test time-based rules (like after 5 PM or continuous 2-hour use) without actually waiting.
+**How we did it:** We store a global `demo_time_offset` using `std::sync::atomic::AtomicI64`. When the frontend sends a POST request to `/api/alerts/demo-time`, we safely update this offset across all threads.
+**Code:**
+```rust
+#[derive(serde::Deserialize)]
+pub struct DemoTimeRequest {
+    pub offset_hours: i64,
+}
+
+async fn set_demo_time(
+    State(state): State<AppState>,
+    Json(payload): Json<DemoTimeRequest>,
+) -> Result<StatusCode, StatusCode> {
+    // Safely update the global time offset across all threads
+    state.demo_time_offset.store(payload.offset_hours, Ordering::Relaxed);
+    Ok(StatusCode::OK)
+}
+```
+
+---
+
 ## ⚡ Fail-Safe Degradation
 If the PostgreSQL database or Redis cache crashes during the demo, the backend instantly falls back to an internal `tokio::RwLock` memory cache. **The dashboard and bot will never go offline.** The API intercepts the SQL connection failure, serves the memory cache, and logs the degradation seamlessly.
 
