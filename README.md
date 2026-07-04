@@ -3,10 +3,13 @@
 **🟢 Live Dashboard Demo:** [https://iut-techathon-2026.vercel.app/](https://iut-techathon-2026.vercel.app/)  
 **📄 Full Technical Report:** [report.tex](./report.tex) (Compile to PDF for the full 5-page architectural breakdown)
 
-<img src="assets/image1.png" alt="Dashboard Overview" width="100%" />
-<br>
-<img src="assets/image2_demo_alerts.png" alt="Time Travel Alerts" width="49%" />
-<img src="system_diagram-1.png" alt="System Diagram" width="49%" />
+<p align="center">
+  <img src="assets/image1.png" alt="Dashboard Overview" width="100%" />
+</p>
+<p align="center">
+  <img src="assets/image2_demo_alerts.png" alt="Time Travel Alerts" width="49%" />
+  <img src="system_diagram-1.png" alt="System Diagram" width="49%" />
+</p>
 
 Welcome to the ultimate solution for the "Lights, Fans, Discord" problem. This project provides a highly robust backend API, a real-time React web dashboard, an interactive AI-powered Discord Bot, and a conceptual hardware schematic.
 
