@@ -333,7 +333,8 @@ async fn check_and_send_alerts(
     sent_alerts: &Arc<Mutex<HashSet<String>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pool = &state.pool;
-    let now = Utc::now();
+    let offset_hours = state.demo_time_offset.load(std::sync::atomic::Ordering::Relaxed);
+    let now = Utc::now() + chrono::Duration::hours(offset_hours);
     let dhaka_offset = chrono::FixedOffset::east_opt(6 * 3600).unwrap();
     let now_dhaka = now.with_timezone(&dhaka_offset);
 
