@@ -1,101 +1,89 @@
-# IUT Techathon 2026 - Office Monitoring System
+# 🏢 Office Electricity Monitor - IUT Techathon 2026
 
-## Overview
-This is the complete backend and hardware simulation suite for the Boss's "Lights, Fans, Discord" office monitoring system. It provides a highly robust, fail-safe backend API, an interactive Discord Bot, and live data simulation for 15 office devices across 3 rooms.
+## 🌟 Overview
+This is the complete, full-stack software and hardware simulation suite for the "Lights, Fans, Discord" office monitoring system. It provides a highly robust backend API, a real-time web dashboard, an interactive Discord Bot powered by AI, and a conceptual hardware schematic. 
 
-## System Architecture
-The system consists of three main components:
-1. **Simulated Hardware (Wokwi):** A representative ESP32 schematic demonstrating how the physical sensors (relays/switches) are wired and read.
-2. **Rust Backend API (Axum):** The central source of truth. It manages the PostgreSQL database, Redis caching, AWS S3 report generation, and provides REST endpoints.
-3. **Discord Bot (Serenity & LLM):** A chat interface that dynamically translates live API data into humanized responses using AI (Gemini/OpenAI) and sends proactive anomaly alerts.
+The entire system is strictly built to satisfy every rule, requirement, and bonus point of the Hackathon.
 
-*(A high-level system diagram is included in this repository as `system_diagram.pdf`)*
+## 🏗️ System Architecture & Consistency
+The system was designed with a strict **Single Source of Truth** architecture to ensure that the Discord bot and the Web Dashboard always show the exact same reality.
 
-## Setup Instructions
+1. **The Core (Rust Backend & PostgreSQL):** The Axum API manages the PostgreSQL database. Every time a device state changes, it is locked, updated, and timestamped in Postgres.
+2. **The Hardware Simulator (Background Task):** A background thread safely toggles random devices every 30-60 seconds to simulate a live office. 
+3. **The Web Dashboard (React/Vite):** A beautiful, responsive UI that polls the backend every 30 seconds for live data. It maps device data onto a 2D floor plan of the office.
+4. **The Discord Bot (Serenity & Rig):** A bot that connects to the same backend. It queries the same database as the dashboard, feeds that raw data into an LLM (Gemini/OpenAI/Claude), and posts humanized responses back to Discord.
+5. **The Proactive Alerts Engine:** Both the dashboard and the Discord bot share a unified alerts engine that constantly checks for anomalies (e.g., 2-hour waste, after-hours usage).
+
+*(A high-level visual system diagram is included in this repository as `system_diagram.pdf`)*
+
+## 🚀 Key Features
+*   **Fail-Safe Degradation:** If the PostgreSQL database or Redis cache crashes, the entire backend instantly falls back to an internal `tokio::RwLock` memory cache. The dashboard and bot will never go offline.
+*   **Time-Travel Debugging:** A built-in UI feature that allows judges to fast-forward the server's internal clock to instantly demonstrate time-based anomaly alerts (Office Hours rule, 2-Hour rule) without waiting.
+*   **AI Humanization:** The Discord bot uses the `rig` crate to translate JSON device data into warm, friendly messages.
+*   **Permissive CORS:** The API is accessible from any web frontend or automated testing system.
+
+## 🛠️ Setup Instructions
 
 ### 1. Prerequisites
-- **Rust Toolchain:** (v1.75+) `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **PostgreSQL:** A running Postgres instance.
-- **Redis:** A running Redis server for rate-limiting and query caching.
+*   **Rust Toolchain:** (v1.75+)
+*   **Node.js & Bun/npm:** For the frontend.
+*   **PostgreSQL & Redis:** Running locally or via Docker.
 
 ### 2. Environment Variables
-Create a `.env` file in the project root with the following keys (see `.env.example`):
+Create a `.env` file in the project root:
 ```env
 # Database & Cache
 DATABASE_URL=postgresql://user:pass@localhost:5432/iut_techathon_2026_db
 REDIS_URL=redis://localhost:6379
 
-# S3 / MinIO Storage
+# S3 Storage (For Reports)
 S3_ENDPOINT=http://localhost:9000
 S3_ACCESS_KEY=admin
 S3_SECRET_KEY=supersecretpassword
 S3_BUCKET=iut-techathon-2026-bucket
 
-# Discord Bot
+# Discord Integration
 DISCORD_TOKEN=your_discord_bot_token
 DISCORD_ALERT_CHANNEL_ID=your_discord_channel_id
 
-# AI Humanization (Providers: GEMINI, ANTHROPIC, OPENAI, GROQ, OPENROUTER, XAI)
+# AI Humanization (Options: GEMINI, ANTHROPIC, OPENAI, GROQ, OPENROUTER, XAI)
 AI_PROVIDER=GEMINI
 AI_MODEL=gemini-1.5-flash
 AI_API_KEY=your_api_key
 ```
 
-### 3. Database Initialization
-You must create the PostgreSQL tables before running the server:
-```sql
-CREATE TABLE devices (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(50) NOT NULL,
-    room VARCHAR(50) NOT NULL,
-    device_type VARCHAR(20) NOT NULL,
-    status BOOLEAN NOT NULL DEFAULT false,
-    power_consumption INTEGER NOT NULL,
-    last_changed TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE device_history (
-    id SERIAL PRIMARY KEY,
-    device_id VARCHAR(50) REFERENCES devices(id),
-    status BOOLEAN NOT NULL,
-    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-*(Ensure you seed the 15 devices into the `devices` table initially).*
-
-### 4. Running the Backend
-Navigate to the `api` directory and run:
+### 3. Running the Backend (API & Bot)
+The Rust backend automatically seeds the database with the 15 required devices on startup.
 ```bash
 cd api
 cargo run --release
 ```
-The backend will automatically:
-1. Start the REST API on `http://0.0.0.0:8080`.
-2. Boot the Serenity Discord Bot.
-3. Spin up the Background Simulator (toggling devices every 30-60s).
-4. Launch the Proactive Alerting Engine (checking for wasted power every 60s).
+*This starts the API on `http://localhost:8080`, boots the Discord bot, and launches the hardware simulator.*
 
-## Features & Endpoints
-> **Note:** CORS is fully permissive — any browser-based application can query the API directly. Non-browser clients (curl, Postman, scripts) are unaffected by CORS as it is a browser-only security mechanism.
-- `GET /api/devices`: Live status of all 15 devices.
-- `POST /api/devices/{id}/toggle`: Mutate a device state (with DB row locking).
-- `GET /api/usage`: Live power meter and today's total estimated kWh (Redis cached).
-- `GET /api/alerts`: Active anomaly detection (after-hours usage, 2-hour continuous waste).
-- `POST /api/reports/export`: Generate a CSV report and upload to S3.
-
-## Hardware Schematic
-Inside the `wokwi/` directory, you will find `diagram.json` and `sketch.ino`. 
-Upload these to [Wokwi](https://wokwi.com) to view the representative circuit for a single room, demonstrating how an ESP32 reads 5 slide switches and operates 3 LEDs (Lights) and 2 DC Motors (Fans).
-
-## Fail-Safe Design
-The backend employs a strict "Graceful Degradation" protocol. If the PostgreSQL database crashes or disconnects during the demo, the API and Discord Bot will seamlessly fall back to an internal `tokio::sync::RwLock` memory cache. The dashboard will never go down.
-
-## Robust Automated Testing
-The API is fully covered by robust automated tests located in `api/src/tests.rs`. 
-These tests specifically verify our Graceful Degradation systems. They forcefully inject broken/fake database connections and offline Redis configurations into the `axum` router, and then strictly verify that every critical endpoint (`/devices`, `/usage`, `/alerts`) successfully intercepts the failure and returns accurate data from the in-memory cache.
-
-To execute the test suite, run:
+### 4. Running the Web Dashboard
 ```bash
-cd api
-cargo test
+cd web
+npm install
+npm run dev
 ```
+*This starts the Vite React frontend on `http://localhost:5173`.*
+
+## 🔌 Hardware Schematic (Wokwi)
+Inside the `wokwi/` directory, you will find `diagram.json` and `sketch.ino`. 
+
+As requested by the rulebook, this is a **representative conceptual circuit** for a single room. It demonstrates how an ESP32 microcontroller is wired to read 5 slide switches and operate 3 LEDs (Lights) and 2 DC Motors (Fans) using pins 15, 2, 4, 16, and 17. 
+
+The `sketch.ino` C++ code reads these pins and formats a JSON payload. In a physical implementation, the ESP32 would simply send this JSON payload to our Rust API via an HTTP POST request. Because this is a simulation, our backend handles the live data generation internally.
+
+## 📡 API Endpoints
+*   `GET /api/devices`: Live status of all 15 devices.
+*   `POST /api/devices/{id}/toggle`: Safely toggle a device state.
+*   `GET /api/usage`: Live power meter and today's total estimated kWh.
+*   `GET /api/alerts`: Active anomaly detection (after-hours usage, 2-hour continuous waste).
+*   `POST /api/alerts/demo-time`: (Internal/Debug) Fast-forward the server clock to trigger rules.
+
+## 🤖 Discord Bot Commands
+*   `!status`: Shows the overall summary of all 3 rooms.
+*   `!room <name>`: Shows detailed status for a specific room (e.g. `!room work1`).
+*   `!usage`: Shows the current live wattage and daily kWh estimate.
+*   `!export`: Generates a CSV report of device history.
