@@ -7,7 +7,7 @@ help:
 	@echo "======================================================================"
 	@echo "Quick Commands:"
 	@echo "  make api        - Build and run the Rust backend API locally (port 8080)"
-	@echo "  make frontend   - Run the TanStack React Vite dev server (port 3000)"
+	@echo "  make frontend   - Run the React Vite dev server (port 5173)"
 	@echo "  make docker     - Spin up Postgres, Redis, and MinIO S3 containers"
 	@echo ""
 	@echo "Additional Commands:"
@@ -25,8 +25,8 @@ api-run:
 	cd api && PORT=8080 RUST_LOG=info cargo run
 
 frontend-run:
-	@echo "💻 Starting TanStack React frontend on http://localhost:3000..."
-	cd web && bun run dev
+	@echo "💻 Starting React frontend on http://localhost:5173..."
+	cd web && npm run dev
 
 docker-up:
 	@echo "🐳 Launching local infrastructure stack (Postgres, Redis, MinIO S3)..."
