@@ -152,7 +152,7 @@ impl EventHandler for Handler {
             tokio::spawn(async move {
                 info!("Starting proactive Discord alert task for channel {}...", channel_id);
                 loop {
-                    sleep(Duration::from_secs(60)).await;
+                    sleep(Duration::from_secs(5)).await;
                     if let Err(e) = check_and_send_alerts(&state, ChannelId::new(channel_id), &http, &sent_alerts).await {
                         error!("Error checking alerts: {}", e);
                     }
